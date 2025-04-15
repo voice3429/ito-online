@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>ito Online</title>
+  <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
+  <style>
+    body { font-family: sans-serif; padding: 20px; }
+    input, button { margin: 5px; padding: 5px; }
+    .hint { margin: 5px 0; border-bottom: 1px solid #ccc; }
+    .secret { color: gray; font-size: 0.9em; }
+  </style>
+</head>
+<body>
+  <h1>ito オンライン</h1>
+
+  <!-- 主催者がテーマを入力 -->
+  <div>
+    <h3>テーマ設定（主催者のみ）</h3>
+    <input id="themeInput" placeholder="例：大きさ、知名度など">
+    <button onclick="setTheme()">テーマ決定</button>
+  </div>
+
+  <hr>
+
+  <!-- プレイヤー参加フォーム -->
+  <div>
+    <h3>プレイヤー参加</h3>
+    <input id="nameInput" placeholder="名前">
+    <button onclick="joinGame()">参加</button>
+  </div>
+
+  <div id="yourNumber" class="secret"></div>
+
+  <hr>
+
+  <!-- ヒント投稿 -->
+  <div>
+    <h3>ヒント投稿</h3>
+    <input id="hintInput" placeholder="ヒント">
+    <button onclick="sendHint()">ヒント送信</button>
+  </div>
+
+  <hr>
+
+  <!-- 表示 -->
+  <h2>現在のテーマ</h2>
+  <div id="themeDisplay">（まだ設定されていません）</div>
+
+  <h2>プレイヤーのヒント</h2>
+  <div id="hintList"></div>
+
+  <script>
+    // 🔥 Firebase設定（あなたの情報で差し替えてね）
+  const firebaseConfig = { 
+  APIキー: "AIzaSyBtoNLxqw_TnTSxdNG7gtb308S0jr5pzpE" 、 
+  認証ドメイン: "ito-online-4348a.firebaseapp.com" 、 
+  データベースURL : "https://ito-online-4348a-default-rtdb.asia-southeast1.firebasedatabase.app" 、 
+  プロジェクト ID : "ito-online-4348a" 、 
+  ストレージバケット: "ito-online-4348a.firebasestorage.app" 、 
+  メッセージ送信者ID : "840014772869" 、 
+  アプリID : "1:840014772869:web:8230edfc917d7a393a47ec" , 
+};
+
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.database();
+
+    // テーマ設定
+    function setTheme() {
+      const theme = document.getElementById('themeInput').value;
+      db.ref('theme').set(theme);
+    }
+
+    db.ref('theme').on('value', snapshot => {
+      document.getElementById('themeDisplay').textContent = snapshot.val() || '（まだ設定されていません）';
+    });
+
+    // プレイヤー参加
+    let playerName = '';
+    function joinGame() {
+      playerName = document.getElementById('nameInput').value;
+      const number = Math.floor(Math.random() * 100) + 1;
+      db.ref('players/' + playerName).set({
+        number: number,
+        hint: ''
+      });
+      document.getElementById('yourNumber').textContent = `あなたの数字は「${number}」です（他の人には見えません）`;
+    }
+
+    // ヒントを送信
+    function sendHint() {
+      const hint = document.getElementById('hintInput').value;
+      db.ref('players/' + playerName + '/hint').set(hint);
+    }
+
+    // ヒント一覧を表示
+    db.ref('players').on('value', snapshot => {
+      const hints = snapshot.val();
+      const list = document.getElementById('hintList');
+      list.innerHTML = '';
+      for (let name in hints) {
+        const p = hints[name];
+        const hintText = p.hint ? p.hint : '（ヒント未入力）';
+        list.innerHTML += `<div class="hint"><strong>${name}:</strong> ${hintText}</div>`;
+      }
+    });
+  </script>
+</body>
+</html>
