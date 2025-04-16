@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>ホスト画面 - itoオンライン</title>
+  <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
+  <style>
+    body { font-family: sans-serif; padding: 20px; }
+    input, button { margin: 5px; padding: 5px; }
+  </style>
+</head>
+<body>
+  <h1>部屋主画面</h1>
+  <div>
+    <p><strong>部屋コード:</strong> <span id="roomCodeDisplay"></span></p>
+    <input id="themeInput" placeholder="テーマを入力">
+    <button onclick="setTheme()">テーマを決定</button>
+    <button onclick="startGame()">ゲーム開始</button>
+  </div>
+
+  <h2>参加者</h2>
+  <ul id="playerList"></ul>
+
+  <script>
+    const firebaseConfig = {
+      apiKey: "AIzaSyBtoNLxqw_TnTSxdNG7gtb308S0jr5pzpE",
+      authDomain: "ito-online-4348a.firebaseapp.com",
+      databaseURL: "https://ito-online-4348a-default-rtdb.asia-southeast1.firebasedatabase.app",
+      projectId: "ito-online-4348a",
+      storageBucket: "ito-online-4348a.appspot.com",
+      messagingSenderId: "840014772869",
+      appId: "1:840014772869:web:8230edfc917d7a393a47ec"
+    };
+
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.database();
+
+    const roomCode = new URLSearchParams(location.search).get("room");
+    document.getElementById("roomCodeDisplay").textContent = roomCode;
+
+    function setTheme() {
+      const theme = document.getElementById("themeInput").value;
+      db.ref(`rooms/${roomCode}/theme`).set(theme);
+    }
+
+    function startGame() {
+      db.ref(`rooms/${roomCode}/players`).once("value", snapshot => {
+        const players = snapshot.val();
+        const names = Object.keys(players || {});
+        const numbers = shuffle([...Array(names.length)].map((_, i) => i + 1));
+        names.forEach((name, i) => {
+          db.ref(`rooms/${roomCode}/players/${name}/number`).set(numbers[i]);
+        });
+        db.ref(`rooms/${roomCode}/started`).set(true);
+      });
+    }
+
+    db.ref(`rooms/${roomCode}/players`).on("value", snapshot => {
+      const list = document.getElementById("playerList");
+      list.innerHTML = "";
+      const players = snapshot.val();
+      for (let name in players) {
+        const li = document.createElement("li");
+        li.textContent = name;
+        list.appendChild(li);
+      }
+    });
+
+    function shuffle(array) {
+      for (let i = array.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [array[i], array[j]] = [array[j], array[i]];
+      }
+      return array;
+    }
+  </script>
+</body>
+</html>
