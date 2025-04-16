@@ -1,54 +1,23 @@
+
 <!DOCTYPE html>
 <html>
 <head>
-  <meta charset="UTF-8" />
-  <title>ito オンライン</title>
+  <meta charset="UTF-8">
+  <title>ito Online</title>
   <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
   <style>
     body { font-family: sans-serif; padding: 20px; }
-    input, button { margin: 5px; padding: 8px; }
-    .hidden { display: none; }
-    .player { margin: 4px 0; }
+    input, button { margin: 5px; padding: 5px; }
+    .hint { margin: 5px 0; border-bottom: 1px solid #ccc; }
+    .secret { color: gray; font-size: 0.9em; }
   </style>
 </head>
 <body>
   <h1>ito オンライン</h1>
-
-  <!-- 部屋作成エリア（初期表示） -->
-  <div id="roomCreator">
-    <button onclick="createRoom()">部屋を作る</button>
-    <div id="roomUrl"></div>
-  </div>
-
-  <!-- 名前入力エリア（部屋参加用） -->
-  <div id="joinRoom" class="hidden">
-    <h3>部屋コード: <span id="roomIdDisplay"></span></h3>
-    <p>名前を入力して参加してください</p>
-    <input id="playerNameInput" placeholder="あなたの名前">
-    <button onclick="joinRoom()">参加</button>
-  </div>
-
-  <!-- ゲームエリア（参加後） -->
-  <div id="gameArea" class="hidden">
-    <h2>参加者一覧（部屋コード: <span id="roomCodeDisplay"></span>）</h2>
-    <div id="playerList"></div>
-    
-    <!-- ホスト専用エリア（部屋作成者のみ表示） -->
-    <div id="hostArea" class="hidden">
-      <h3>ゲームマスターのコントロール</h3>
-      <p>テーマ設定と「ゲーム開始」ボタンはこちら</p>
-      <input id="themeInput" placeholder="例: 大きさ、知名度など">
-      <button onclick="setTheme()">テーマ決定</button>
-      <button onclick="startGame()">🎲 ゲーム開始</button>
-    </div>
-
-    <h3>現在のテーマ</h3>
-    <div id="currentTheme">（まだ未設定）</div>
-  </div>
+  <div id="main"></div>
 
   <script>
-    // Firebase接続設定（必要情報に書き換え済み）
     const firebaseConfig = {
       apiKey: "AIzaSyBtoNLxqw_TnTSxdNG7gtb308S0jr5pzpE",
       authDomain: "ito-online-4348a.firebaseapp.com",
@@ -61,76 +30,105 @@
     firebase.initializeApp(firebaseConfig);
     const db = firebase.database();
 
-    let roomId = "";
-    let isHost = false;
+    const params = new URLSearchParams(window.location.search);
+    const roomCode = params.get("room");
+
+    if (!roomCode) {
+      // ホスト画面：部屋作成
+      const room = Math.random().toString(36).substring(2, 8);
+      db.ref("rooms/" + room).set({ theme: "", started: false });
+      const div = document.getElementById("main");
+      div.innerHTML = \`
+        <p>部屋を作成しました： <strong>\${room}</strong></p>
+        <p>以下のURLを参加者に送ってください：</p>
+        <p><a href="?room=\${room}">\${location.href}?room=\${room}</a></p>
+        <input id="hostName" placeholder="あなたの名前（主催者）">
+        <button onclick="registerHost('\${room}')">参加</button>
+        <div id="hostPanel" style="display:none;">
+          <input id="themeInput" placeholder="テーマ入力">
+          <button onclick="setTheme('\${room}')">テーマ決定</button>
+          <button onclick="startGame('\${room}')">ゲーム開始</button>
+        </div>
+        <div id="themeDisplay"></div>
+        <h3>ヒント一覧</h3>
+        <div id="hintList"></div>
+      \`;
+    } else {
+      // 参加者画面
+      const div = document.getElementById("main");
+      div.innerHTML = \`
+        <p>部屋コード：<strong>\${roomCode}</strong></p>
+        <input id="nameInput" placeholder="名前を入力">
+        <button onclick="joinRoom('\${roomCode}')">参加</button>
+        <div id="playerPanel" style="display:none;">
+          <div id="yourNumber" class="secret"></div>
+          <input id="hintInput" placeholder="ヒントを入力">
+          <button onclick="sendHint('\${roomCode}')">ヒント送信</button>
+        </div>
+        <h3>テーマ</h3>
+        <div id="themeDisplay"></div>
+        <h3>ヒント一覧</h3>
+        <div id="hintList"></div>
+      \`;
+    }
+
     let playerName = "";
 
-    // URLクエリからroomパラメータを取得（すでに部屋が作成されている場合）
-    const params = new URLSearchParams(window.location.search);
-    if (params.has("room")) {
-      roomId = params.get("room");
-      document.getElementById("roomCreator").classList.add("hidden");
-      document.getElementById("joinRoom").classList.remove("hidden");
-      document.getElementById("roomIdDisplay").textContent = roomId;
+    function registerHost(room) {
+      playerName = document.getElementById("hostName").value;
+      db.ref("rooms/" + room + "/players/" + playerName).set({ hint: "", number: 0 });
+      document.getElementById("hostPanel").style.display = "block";
     }
 
-    // 部屋作成（ゲームマスター用）
-    function createRoom() {
-      roomId = Math.random().toString(36).substr(2, 6);
-      isHost = true;
-      const newUrl = `${location.origin}${location.pathname}?room=${roomId}`;
-      document.getElementById("roomUrl").innerHTML =
-        `部屋が作成されました！<br>このURLを共有してください：<br><a href="${newUrl}" target="_blank">${newUrl}</a>`;
-      document.getElementById("roomCreator").classList.add("hidden");
-      document.getElementById("joinRoom").classList.remove("hidden");
-      document.getElementById("roomIdDisplay").textContent = roomId;
-    }
-
-    // 部屋参加処理
-    function joinRoom() {
-      playerName = document.getElementById("playerNameInput").value;
-      if (!playerName) { alert("名前を入力してください！"); return; }
-      db.ref(`rooms/${roomId}/players/${playerName}`).set({ joined: true });
-      document.getElementById("joinRoom").classList.add("hidden");
-      document.getElementById("gameArea").classList.remove("hidden");
-      document.getElementById("roomCodeDisplay").textContent = roomId;
-      // ゲームマスターならホストエリアを表示
-      if (isHost) {
-        document.getElementById("hostArea").classList.remove("hidden");
-      }
-      watchPlayers();
-      watchTheme();
-    }
-
-    // リアルタイム参加者一覧監視
-    function watchPlayers() {
-      db.ref(`rooms/${roomId}/players`).on("value", snapshot => {
-        const players = snapshot.val() || {};
-        let html = "";
-        for (let name in players) {
-          html += `<div class="player">${name}</div>`;
-        }
-        document.getElementById("playerList").innerHTML = html;
-      });
-    }
-
-    // テーマ設定・表示処理
-    function setTheme() {
+    function setTheme(room) {
       const theme = document.getElementById("themeInput").value;
-      db.ref(`rooms/${roomId}/theme`).set(theme);
+      db.ref("rooms/" + room + "/theme").set(theme);
     }
 
-    function watchTheme() {
-      db.ref(`rooms/${roomId}/theme`).on("value", snapshot => {
-        document.getElementById("currentTheme").textContent = snapshot.val() || "（まだ未設定）";
+    function startGame(room) {
+      db.ref("rooms/" + room + "/players").once("value", snapshot => {
+        const players = snapshot.val();
+        const names = Object.keys(players);
+        const nums = names.map((_, i) => i + 1).sort(() => Math.random() - 0.5);
+        names.forEach((name, i) => {
+          db.ref("rooms/" + room + "/players/" + name + "/number").set(nums[i]);
+        });
+        db.ref("rooms/" + room + "/started").set(true);
       });
     }
 
-    // ゲーム開始処理（ここに任意の処理を追加できます）
-    function startGame() {
-      db.ref(`rooms/${roomId}/status`).set("started");
-      alert("ゲームが開始されました！");
+    function joinRoom(room) {
+      playerName = document.getElementById("nameInput").value;
+      db.ref("rooms/" + room + "/players/" + playerName).set({ hint: "", number: 0 });
+      document.getElementById("playerPanel").style.display = "block";
     }
+
+    function sendHint(room) {
+      const hint = document.getElementById("hintInput").value;
+      db.ref("rooms/" + room + "/players/" + playerName + "/hint").set(hint);
+    }
+
+    function update(room) {
+      db.ref("rooms/" + room + "/theme").on("value", snap => {
+        document.getElementById("themeDisplay").textContent = snap.val() || "未設定";
+      });
+      db.ref("rooms/" + room + "/players").on("value", snap => {
+        const data = snap.val();
+        const list = document.getElementById("hintList");
+        list.innerHTML = "";
+        for (let name in data) {
+          const hint = data[name].hint || "（未入力）";
+          list.innerHTML += \`<div class="hint"><strong>\${name}</strong>: \${hint}</div>\`;
+        }
+        if (data[playerName] && data[playerName].number > 0) {
+          const n = data[playerName].number;
+          const target = document.getElementById("yourNumber");
+          if (target) target.textContent = \`あなたの数字：\${n}\`;
+        }
+      });
+    }
+
+    if (roomCode) update(roomCode);
   </script>
 </body>
 </html>
