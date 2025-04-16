@@ -8,103 +8,138 @@
   <style>
     body { font-family: sans-serif; padding: 20px; }
     input, button { margin: 5px; padding: 5px; }
-    .hint { margin: 5px 0; border-bottom: 1px solid #ccc; }
-    .secret { color: gray; font-size: 0.9em; }
+    .hidden { display: none; }
   </style>
 </head>
 <body>
   <h1>ito オンライン</h1>
 
-  <!-- 主催者がテーマを入力 -->
-  <div>
-    <h3>テーマ設定（主催者のみ）</h3>
-    <input id="themeInput" placeholder="例：大きさ、知名度など">
-    <button onclick="setTheme()">テーマ決定</button>
+  <!-- 部屋作成画面 -->
+  <div id="createRoom">
+    <button onclick="createRoom()">部屋を作る</button>
   </div>
 
-  <hr>
-
-  <!-- プレイヤー参加フォーム -->
-  <div>
-    <h3>プレイヤー参加</h3>
+  <!-- 参加画面 -->
+  <div id="joinArea" class="hidden">
+    <h3>部屋: <span id="roomIdDisplay"></span></h3>
     <input id="nameInput" placeholder="名前">
-    <button onclick="joinGame()">参加</button>
+    <button onclick="joinRoom()">参加</button>
   </div>
 
-  <div id="yourNumber" class="secret"></div>
+  <!-- ゲームマスター画面 -->
+  <div id="hostControls" class="hidden">
+    <h3>ゲームマスター設定</h3>
+    <input id="themeInput" placeholder="テーマ">
+    <button onclick="setTheme()">テーマ決定</button>
+    <button onclick="startGame()">ゲーム開始</button>
+  </div>
 
-  <hr>
+  <!-- 参加者リスト -->
+  <h2>参加者</h2>
+  <ul id="playerList"></ul>
 
-  <!-- ヒント投稿 -->
-  <div>
-    <h3>ヒント投稿</h3>
+  <!-- ゲーム開始後画面 -->
+  <div id="gameArea" class="hidden">
+    <h2>テーマ: <span id="themeDisplay"></span></h2>
+    <div id="yourNumber"></div>
     <input id="hintInput" placeholder="ヒント">
     <button onclick="sendHint()">ヒント送信</button>
+    <h3>ヒント一覧</h3>
+    <div id="hintList"></div>
   </div>
 
-  <hr>
+<script>
+  const firebaseConfig = {
+    apiKey: "AIzaSyBtoNLxqw_TnTSxdNG7gtb308S0jr5pzpE",
+    authDomain: "ito-online-4348a.firebaseapp.com",
+    databaseURL: "https://ito-online-4348a-default-rtdb.asia-southeast1.firebasedatabase.app",
+    projectId: "ito-online-4348a",
+    storageBucket: "ito-online-4348a.appspot.com",
+    messagingSenderId: "840014772869",
+    appId: "1:840014772869:web:8230edfc917d7a393a47ec"
+  };
 
-  <!-- 表示 -->
-  <h2>現在のテーマ</h2>
-  <div id="themeDisplay">（まだ設定されていません）</div>
+  firebase.initializeApp(firebaseConfig);
+  const db = firebase.database();
 
-  <h2>プレイヤーのヒント</h2>
-  <div id="hintList"></div>
+  const urlParams = new URLSearchParams(window.location.search);
+  let roomId = urlParams.get('room');
+  let playerName = '';
+  let isHost = false;
 
-  <script>
-    // 🔥 Firebase設定（あなたの情報で差し替えてね）
-  const firebaseConfig = { 
-  APIキー: "AIzaSyBtoNLxqw_TnTSxdNG7gtb308S0jr5pzpE" 、 
-  認証ドメイン: "ito-online-4348a.firebaseapp.com" 、 
-  データベースURL : "https://ito-online-4348a-default-rtdb.asia-southeast1.firebasedatabase.app" 、 
-  プロジェクト ID : "ito-online-4348a" 、 
-  ストレージバケット: "ito-online-4348a.firebasestorage.app" 、 
-  メッセージ送信者ID : "840014772869" 、 
-  アプリID : "1:840014772869:web:8230edfc917d7a393a47ec" , 
-};
+  if (roomId) {
+    document.getElementById('createRoom').classList.add('hidden');
+    document.getElementById('joinArea').classList.remove('hidden');
+    document.getElementById('roomIdDisplay').textContent = roomId;
+    watchPlayers();
+  }
 
-    firebase.initializeApp(firebaseConfig);
-    const db = firebase.database();
+  function createRoom() {
+    const newRoom = db.ref('rooms').push();
+    roomId = newRoom.key;
+    isHost = true;
+    window.location.href = window.location.pathname + '?room=' + roomId;
+  }
 
-    // テーマ設定
-    function setTheme() {
-      const theme = document.getElementById('themeInput').value;
-      db.ref('theme').set(theme);
+  function joinRoom() {
+    playerName = document.getElementById('nameInput').value;
+    const number = Math.floor(Math.random() * 100) + 1;
+    db.ref(`rooms/${roomId}/players/${playerName}`).set({ number, hint: '' });
+    if (isHost) {
+      document.getElementById('hostControls').classList.remove('hidden');
     }
+    document.getElementById('joinArea').classList.add('hidden');
+  }
 
-    db.ref('theme').on('value', snapshot => {
-      document.getElementById('themeDisplay').textContent = snapshot.val() || '（まだ設定されていません）';
-    });
+  function setTheme() {
+    const theme = document.getElementById('themeInput').value;
+    db.ref(`rooms/${roomId}/theme`).set(theme);
+  }
 
-    // プレイヤー参加
-    let playerName = '';
-    function joinGame() {
-      playerName = document.getElementById('nameInput').value;
-      const number = Math.floor(Math.random() * 100) + 1;
-      db.ref('players/' + playerName).set({
-        number: number,
-        hint: ''
-      });
-      document.getElementById('yourNumber').textContent = `あなたの数字は「${number}」です（他の人には見えません）`;
-    }
+  function startGame() {
+    db.ref(`rooms/${roomId}/started`).set(true);
+  }
 
-    // ヒントを送信
-    function sendHint() {
-      const hint = document.getElementById('hintInput').value;
-      db.ref('players/' + playerName + '/hint').set(hint);
-    }
+  function sendHint() {
+    const hint = document.getElementById('hintInput').value;
+    db.ref(`rooms/${roomId}/players/${playerName}/hint`).set(hint);
+  }
 
-    // ヒント一覧を表示
-    db.ref('players').on('value', snapshot => {
-      const hints = snapshot.val();
-      const list = document.getElementById('hintList');
+  function watchPlayers() {
+    db.ref(`rooms/${roomId}/players`).on('value', snapshot => {
+      const players = snapshot.val() || {};
+      const list = document.getElementById('playerList');
       list.innerHTML = '';
-      for (let name in hints) {
-        const p = hints[name];
-        const hintText = p.hint ? p.hint : '（ヒント未入力）';
-        list.innerHTML += `<div class="hint"><strong>${name}:</strong> ${hintText}</div>`;
+      for (let name in players) {
+        const li = document.createElement('li');
+        li.textContent = name;
+        list.appendChild(li);
       }
     });
-  </script>
+
+    db.ref(`rooms/${roomId}/theme`).on('value', snapshot => {
+      document.getElementById('themeDisplay').textContent = snapshot.val() || '';
+    });
+
+    db.ref(`rooms/${roomId}/started`).on('value', snapshot => {
+      if (snapshot.val()) {
+        document.getElementById('gameArea').classList.remove('hidden');
+        db.ref(`rooms/${roomId}/players/${playerName}/number`).once('value').then(numSnap => {
+          document.getElementById('yourNumber').textContent = `あなたの数字は「${numSnap.val()}」です`;
+        });
+      }
+    });
+
+    db.ref(`rooms/${roomId}/players`).on('value', snapshot => {
+      const players = snapshot.val() || {};
+      const hintList = document.getElementById('hintList');
+      hintList.innerHTML = '';
+      for (let name in players) {
+        const hint = players[name].hint || '（未入力）';
+        hintList.innerHTML += `<div><strong>${name}:</strong> ${hint}</div>`;
+      }
+    });
+  }
+</script>
 </body>
 </html>
