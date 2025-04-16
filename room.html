@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>ito - 部屋に参加</title>
+  <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
+  <style>
+    body { font-family: sans-serif; padding: 20px; }
+    input, button { margin: 5px; padding: 5px; }
+  </style>
+</head>
+<body>
+  <h1>部屋に参加</h1>
+  <p id="roomIdDisplay"></p>
+
+  <input id="nameInput" placeholder="あなたの名前">
+  <button onclick="joinRoom()">参加</button>
+
+  <script>
+    const firebaseConfig = {
+      apiKey: "AIzaSyBtoNLxqw_TnTSxdNG7gtb308S0jr5pzpE",
+      authDomain: "ito-online-4348a.firebaseapp.com",
+      databaseURL: "https://ito-online-4348a-default-rtdb.asia-southeast1.firebasedatabase.app",
+      projectId: "ito-online-4348a",
+      storageBucket: "ito-online-4348a.appspot.com",
+      messagingSenderId: "840014772869",
+      appId: "1:840014772869:web:8230edfc917d7a393a47ec"
+    };
+
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.database();
+
+    const urlParams = new URLSearchParams(window.location.search);
+    const roomId = urlParams.get('id');
+    document.getElementById('roomIdDisplay').textContent = `参加する部屋コード: ${roomId}`;
+
+    function joinRoom() {
+      const name = document.getElementById('nameInput').value;
+      if (!name) return alert("名前を入力してください");
+      const number = Math.floor(Math.random() * 100) + 1;
+
+      db.ref(`rooms/${roomId}/players/${name}`).set({
+        number: number,
+        hint: ""
+      });
+
+      alert(`参加完了！あなたの数字は ${number} です（他の人には見えません）`);
+    }
+  </script>
+</body>
+</html>
