@@ -1,145 +1,124 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <meta charset="UTF-8">
-  <title>ito Online</title>
+  <meta charset="UTF-8" />
+  <title>ito オンライン</title>
   <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
   <style>
     body { font-family: sans-serif; padding: 20px; }
-    input, button { margin: 5px; padding: 5px; }
+    input, button { margin: 5px; padding: 8px; }
+    .player { margin: 4px 0; }
     .hidden { display: none; }
   </style>
 </head>
 <body>
   <h1>ito オンライン</h1>
 
-  <!-- 部屋作成画面 -->
-  <div id="createRoom">
+  <div id="roomCreator">
     <button onclick="createRoom()">部屋を作る</button>
+    <div id="roomUrl"></div>
   </div>
 
-  <!-- 参加画面 -->
-  <div id="joinArea" class="hidden">
-    <h3>部屋: <span id="roomIdDisplay"></span></h3>
-    <input id="nameInput" placeholder="名前">
-    <button onclick="joinRoom()">参加</button>
+  <div id="joinRoom" class="hidden">
+    <h3>名前を入力して参加</h3>
+    <input id="playerName" placeholder="あなたの名前">
+    <button onclick="join()">参加</button>
   </div>
 
-  <!-- ゲームマスター画面 -->
-  <div id="hostControls" class="hidden">
-    <h3>ゲームマスター設定</h3>
-    <input id="themeInput" placeholder="テーマ">
-    <button onclick="setTheme()">テーマ決定</button>
-    <button onclick="startGame()">ゲーム開始</button>
-  </div>
-
-  <!-- 参加者リスト -->
-  <h2>参加者</h2>
-  <ul id="playerList"></ul>
-
-  <!-- ゲーム開始後画面 -->
   <div id="gameArea" class="hidden">
-    <h2>テーマ: <span id="themeDisplay"></span></h2>
-    <div id="yourNumber"></div>
-    <input id="hintInput" placeholder="ヒント">
-    <button onclick="sendHint()">ヒント送信</button>
-    <h3>ヒント一覧</h3>
-    <div id="hintList"></div>
+    <h2>参加者（部屋コード: <span id="roomIdDisplay"></span>）</h2>
+    <div id="playerList"></div>
+
+    <div id="hostArea" class="hidden">
+      <h3>テーマを設定</h3>
+      <input id="themeInput" placeholder="例：大きさ、知名度など">
+      <button onclick="setTheme()">テーマを決定</button>
+      <button onclick="startGame()">🎲 ゲームを開始</button>
+    </div>
+
+    <h3>現在のテーマ</h3>
+    <div id="currentTheme">（まだ未設定）</div>
   </div>
 
-<script>
-  const firebaseConfig = {
-    apiKey: "AIzaSyBtoNLxqw_TnTSxdNG7gtb308S0jr5pzpE",
-    authDomain: "ito-online-4348a.firebaseapp.com",
-    databaseURL: "https://ito-online-4348a-default-rtdb.asia-southeast1.firebasedatabase.app",
-    projectId: "ito-online-4348a",
-    storageBucket: "ito-online-4348a.appspot.com",
-    messagingSenderId: "840014772869",
-    appId: "1:840014772869:web:8230edfc917d7a393a47ec"
-  };
+  <script>
+    // Firebase設定
+    const firebaseConfig = {
+      apiKey: "AIzaSyBtoNLxqw_TnTSxdNG7gtb308S0jr5pzpE",
+      authDomain: "ito-online-4348a.firebaseapp.com",
+      databaseURL: "https://ito-online-4348a-default-rtdb.asia-southeast1.firebasedatabase.app",
+      projectId: "ito-online-4348a",
+      storageBucket: "ito-online-4348a.appspot.com",
+      messagingSenderId: "840014772869",
+      appId: "1:840014772869:web:8230edfc917d7a393a47ec"
+    };
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.database();
 
-  firebase.initializeApp(firebaseConfig);
-  const db = firebase.database();
+    let roomId = "";
+    let isHost = false;
+    let playerName = "";
 
-  const urlParams = new URLSearchParams(window.location.search);
-  let roomId = urlParams.get('room');
-  let playerName = '';
-  let isHost = false;
-
-  if (roomId) {
-    document.getElementById('createRoom').classList.add('hidden');
-    document.getElementById('joinArea').classList.remove('hidden');
-    document.getElementById('roomIdDisplay').textContent = roomId;
-    watchPlayers();
-  }
-
-  function createRoom() {
-    const newRoom = db.ref('rooms').push();
-    roomId = newRoom.key;
-    isHost = true;
-    window.location.href = window.location.pathname + '?room=' + roomId;
-  }
-
-  function joinRoom() {
-    playerName = document.getElementById('nameInput').value;
-    const number = Math.floor(Math.random() * 100) + 1;
-    db.ref(`rooms/${roomId}/players/${playerName}`).set({ number, hint: '' });
-    if (isHost) {
-      document.getElementById('hostControls').classList.remove('hidden');
+    // URLからroomId取得
+    const params = new URLSearchParams(window.location.search);
+    if (params.has("room")) {
+      roomId = params.get("room");
+      document.getElementById("roomCreator").classList.add("hidden");
+      document.getElementById("joinRoom").classList.remove("hidden");
     }
-    document.getElementById('joinArea').classList.add('hidden');
-  }
 
-  function setTheme() {
-    const theme = document.getElementById('themeInput').value;
-    db.ref(`rooms/${roomId}/theme`).set(theme);
-  }
+    function createRoom() {
+      roomId = Math.random().toString(36).substr(2, 6);
+      isHost = true;
+      const url = `${location.origin}${location.pathname}?room=${roomId}`;
+      document.getElementById("roomUrl").innerHTML = `このURLを共有：<br><a href="${url}">${url}</a>`;
+      document.getElementById("roomCreator").classList.add("hidden");
+      document.getElementById("joinRoom").classList.remove("hidden");
+    }
 
-  function startGame() {
-    db.ref(`rooms/${roomId}/started`).set(true);
-  }
+    function join() {
+      playerName = document.getElementById("playerName").value;
+      if (!playerName) return;
+      db.ref(`rooms/${roomId}/players/${playerName}`).set({ joined: true });
 
-  function sendHint() {
-    const hint = document.getElementById('hintInput').value;
-    db.ref(`rooms/${roomId}/players/${playerName}/hint`).set(hint);
-  }
+      document.getElementById("joinRoom").classList.add("hidden");
+      document.getElementById("gameArea").classList.remove("hidden");
+      document.getElementById("roomIdDisplay").textContent = roomId;
 
-  function watchPlayers() {
-    db.ref(`rooms/${roomId}/players`).on('value', snapshot => {
-      const players = snapshot.val() || {};
-      const list = document.getElementById('playerList');
-      list.innerHTML = '';
-      for (let name in players) {
-        const li = document.createElement('li');
-        li.textContent = name;
-        list.appendChild(li);
+      if (isHost) {
+        document.getElementById("hostArea").classList.remove("hidden");
       }
-    });
 
-    db.ref(`rooms/${roomId}/theme`).on('value', snapshot => {
-      document.getElementById('themeDisplay').textContent = snapshot.val() || '';
-    });
+      watchPlayers();
+      watchTheme();
+    }
 
-    db.ref(`rooms/${roomId}/started`).on('value', snapshot => {
-      if (snapshot.val()) {
-        document.getElementById('gameArea').classList.remove('hidden');
-        db.ref(`rooms/${roomId}/players/${playerName}/number`).once('value').then(numSnap => {
-          document.getElementById('yourNumber').textContent = `あなたの数字は「${numSnap.val()}」です`;
-        });
-      }
-    });
+    function watchPlayers() {
+      db.ref(`rooms/${roomId}/players`).on("value", snapshot => {
+        const players = snapshot.val();
+        const list = document.getElementById("playerList");
+        list.innerHTML = "";
+        for (let name in players) {
+          list.innerHTML += `<div class="player">${name}</div>`;
+        }
+      });
+    }
 
-    db.ref(`rooms/${roomId}/players`).on('value', snapshot => {
-      const players = snapshot.val() || {};
-      const hintList = document.getElementById('hintList');
-      hintList.innerHTML = '';
-      for (let name in players) {
-        const hint = players[name].hint || '（未入力）';
-        hintList.innerHTML += `<div><strong>${name}:</strong> ${hint}</div>`;
-      }
-    });
-  }
-</script>
+    function setTheme() {
+      const theme = document.getElementById("themeInput").value;
+      db.ref(`rooms/${roomId}/theme`).set(theme);
+    }
+
+    function watchTheme() {
+      db.ref(`rooms/${roomId}/theme`).on("value", snapshot => {
+        document.getElementById("currentTheme").textContent = snapshot.val() || "（まだ未設定）";
+      });
+    }
+
+    function startGame() {
+      db.ref(`rooms/${roomId}/status`).set("started");
+      alert("ゲームを開始しました！");
+    }
+  </script>
 </body>
 </html>
