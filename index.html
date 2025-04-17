@@ -34,15 +34,14 @@
         players: {
           [hostName]: {
             hint: "",
-            number: null
+            number: null,
+            ready: false
           }
-        }
+        },
+        theme: ""
       });
 
-      localStorage.setItem('playerName', hostName);
-      localStorage.setItem('isHost', 'true');
-
-      window.location.href = `room.html?room=${roomId}`;
+      window.location.href = `room.html?room=${roomId}&name=${encodeURIComponent(hostName)}`;
     }
   </script>
 </body>
