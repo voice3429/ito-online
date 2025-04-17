@@ -1,21 +1,42 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <meta charset="UTF-8">
-  <title>ito - 部屋に参加</title>
+  <meta charset="UTF-8" />
+  <title>ito - 参加者画面</title>
   <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
   <style>
     body { font-family: sans-serif; padding: 20px; }
-    input, button { margin: 5px; padding: 5px; }
+    input, button { padding: 8px; margin: 5px 0; }
+    #gameSection, #numberSection, #hintSection { display: none; }
+    .hint { margin: 5px 0; }
   </style>
 </head>
 <body>
-  <h1>部屋に参加</h1>
-  <p id="roomIdDisplay"></p>
+  <h1>ito 参加画面</h1>
 
-  <input id="nameInput" placeholder="あなたの名前">
-  <button onclick="joinRoom()">参加</button>
+  <div id="joinSection">
+    <p>名前を入力してゲームに参加してください。</p>
+    <input id="nameInput" placeholder="名前を入力">
+    <button onclick="joinRoom()">参加する</button>
+  </div>
+
+  <div id="waitingSection">
+    <p>ゲームが始まるのを待っています...</p>
+  </div>
+
+  <div id="gameSection">
+    <div id="numberSection">
+      <p>あなたの数字: <span id="myNumber"></span></p>
+    </div>
+    <div id="hintSection">
+      <input id="hintInput" placeholder="ヒントを入力">
+      <button onclick="submitHint()">ヒントを送信</button>
+    </div>
+    <h3>他のプレイヤーのヒント</h3>
+    <div id="hintList"></div>
+    <button id="stopGameBtn" style="display:none;" onclick="stopGame()">ゲームを中断する</button>
+  </div>
 
   <script>
     const firebaseConfig = {
@@ -27,25 +48,88 @@
       messagingSenderId: "840014772869",
       appId: "1:840014772869:web:8230edfc917d7a393a47ec"
     };
-
     firebase.initializeApp(firebaseConfig);
     const db = firebase.database();
 
     const urlParams = new URLSearchParams(window.location.search);
-    const roomId = urlParams.get('id');
-    document.getElementById('roomIdDisplay').textContent = `参加する部屋コード: ${roomId}`;
+    const roomId = urlParams.get("room");
+    let playerName = "";
+    let isHost = false;
 
     function joinRoom() {
-      const name = document.getElementById('nameInput').value;
-      if (!name) return alert("名前を入力してください");
-      const number = Math.floor(Math.random() * 100) + 1;
+      const input = document.getElementById("nameInput").value.trim();
+      if (!input) return alert("名前を入力してください！");
+      playerName = input;
+      document.getElementById("joinSection").style.display = "none";
+      document.getElementById("waitingSection").style.display = "block";
 
-      db.ref(`rooms/${roomId}/players/${name}`).set({
-        number: number,
-        hint: ""
+      // プレイヤーとして登録
+      db.ref(`rooms/${roomId}/players/${playerName}`).set({
+        hint: "",
+        number: null
       });
 
-      alert(`参加完了！あなたの数字は ${number} です（他の人には見えません）`);
+      // ホストか判定
+      db.ref(`rooms/${roomId}/host`).once("value", snapshot => {
+        if (snapshot.val() === playerName) {
+          isHost = true;
+          document.getElementById("stopGameBtn").style.display = "inline";
+        }
+      });
+    }
+
+    // ゲーム開始を監視
+    db.ref(`rooms/${roomId}/status`).on("value", snapshot => {
+      const status = snapshot.val();
+      if (status === "started") {
+        startGameUI();
+      } else if (status === "waiting") {
+        document.getElementById("waitingSection").style.display = "block";
+        document.getElementById("gameSection").style.display = "none";
+      }
+    });
+
+    function startGameUI() {
+      document.getElementById("waitingSection").style.display = "none";
+      document.getElementById("gameSection").style.display = "block";
+
+      // 自分の数字を取得
+      db.ref(`rooms/${roomId}/players/${playerName}/number`).on("value", snapshot => {
+        document.getElementById("myNumber").textContent = snapshot.val();
+        document.getElementById("numberSection").style.display = "block";
+        document.getElementById("hintSection").style.display = "block";
+      });
+
+      // 全員のヒントを表示
+      db.ref(`rooms/${roomId}/players`).on("value", snapshot => {
+        const data = snapshot.val();
+        const hintList = document.getElementById("hintList");
+        hintList.innerHTML = "";
+        for (let name in data) {
+          const hint = data[name].hint || "（未入力）";
+          hintList.innerHTML += `<div class="hint"><strong>${name}</strong>: ${hint}</div>`;
+        }
+      });
+    }
+
+    function submitHint() {
+      const hint = document.getElementById("hintInput").value;
+      db.ref(`rooms/${roomId}/players/${playerName}/hint`).set(hint);
+    }
+
+    function stopGame() {
+      if (isHost) {
+        db.ref(`rooms/${roomId}/status`).set("waiting");
+        // ヒントと数字をリセット（必要なら）
+        db.ref(`rooms/${roomId}/players`).once("value", snapshot => {
+          const updates = {};
+          snapshot.forEach(child => {
+            updates[`${child.key}/hint`] = "";
+            updates[`${child.key}/number`] = null;
+          });
+          db.ref(`rooms/${roomId}/players`).update(updates);
+        });
+      }
     }
   </script>
 </body>

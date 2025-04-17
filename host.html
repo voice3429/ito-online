@@ -2,77 +2,102 @@
 <html>
 <head>
   <meta charset="UTF-8">
-  <title>ホスト画面 - itoオンライン</title>
-  <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
-  <style>
-    body { font-family: sans-serif; padding: 20px; }
-    input, button { margin: 5px; padding: 5px; }
-  </style>
+  <title>itoゲーム - 参加者画面</title>
+  <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-database-compat.js"></script>
 </head>
 <body>
-  <h1>部屋主画面</h1>
-  <div>
-    <p><strong>部屋コード:</strong> <span id="roomCodeDisplay"></span></p>
-    <input id="themeInput" placeholder="テーマを入力">
-    <button onclick="setTheme()">テーマを決定</button>
-    <button onclick="startGame()">ゲーム開始</button>
+  <h1>itoゲーム - 参加者画面</h1>
+  <div id="nameInputScreen">
+    <label>名前を入力: <input type="text" id="nameInput" /></label>
+    <button onclick="enterRoom()">部屋に入る</button>
   </div>
 
-  <h2>参加者</h2>
-  <ul id="playerList"></ul>
+  <div id="gameUI" style="display: none;">
+    <p>部屋コード: <span id="roomCodeDisplay"></span></p>
+    <p>あなたの名前: <span id="playerNameDisplay"></span></p>
+
+    <div id="waitingScreen">
+      <p>ゲーム開始を待っています…</p>
+    </div>
+
+    <div id="gameScreen" style="display: none;">
+      <p>あなたの数字: <strong id="yourNumber"></strong></p>
+      <label>ヒント: <input type="text" id="hintInput"></label>
+      <button onclick="submitHint()">ヒントを送信</button>
+    </div>
+  </div>
 
   <script>
     const firebaseConfig = {
-      apiKey: "AIzaSyBtoNLxqw_TnTSxdNG7gtb308S0jr5pzpE",
-      authDomain: "ito-online-4348a.firebaseapp.com",
-      databaseURL: "https://ito-online-4348a-default-rtdb.asia-southeast1.firebasedatabase.app",
-      projectId: "ito-online-4348a",
-      storageBucket: "ito-online-4348a.appspot.com",
-      messagingSenderId: "840014772869",
-      appId: "1:840014772869:web:8230edfc917d7a393a47ec"
+      apiKey: "AIzaSyA6S5-SAfG_taPIQ5C8XzZALnYw8nUKrHs",
+      authDomain: "ito-online-test.firebaseapp.com",
+      databaseURL: "https://ito-online-test-default-rtdb.firebaseio.com",
+      projectId: "ito-online-test",
+      storageBucket: "ito-online-test.appspot.com",
+      messagingSenderId: "698147328197",
+      appId: "1:698147328197:web:1ff3f34c66e505eea4277f"
     };
 
     firebase.initializeApp(firebaseConfig);
     const db = firebase.database();
 
-    const roomCode = new URLSearchParams(location.search).get("room");
-    document.getElementById("roomCodeDisplay").textContent = roomCode;
+    const params = new URLSearchParams(location.search);
+    const roomCode = params.get("room");
+    document.getElementById("roomCodeDisplay").innerText = roomCode;
 
-    function setTheme() {
-      const theme = document.getElementById("themeInput").value;
-      db.ref(`rooms/${roomCode}/theme`).set(theme);
-    }
+    let playerName = "";
+    let myPlayerId = null;
 
-    function startGame() {
-      db.ref(`rooms/${roomCode}/players`).once("value", snapshot => {
-        const players = snapshot.val();
-        const names = Object.keys(players || {});
-        const numbers = shuffle([...Array(names.length)].map((_, i) => i + 1));
-        names.forEach((name, i) => {
-          db.ref(`rooms/${roomCode}/players/${name}/number`).set(numbers[i]);
-        });
-        db.ref(`rooms/${roomCode}/started`).set(true);
+    function enterRoom() {
+      playerName = document.getElementById("nameInput").value.trim();
+      if (!playerName) {
+        alert("名前を入力してください！");
+        return;
+      }
+
+      // プレイヤー情報をFirebaseに追加
+      const newPlayerRef = db.ref(`rooms/${roomCode}/players`).push();
+      newPlayerRef.set({
+        name: playerName,
+        hint: "",
+        number: null
+      });
+
+      myPlayerId = newPlayerRef.key;
+      document.getElementById("playerNameDisplay").innerText = playerName;
+      document.getElementById("nameInputScreen").style.display = "none";
+      document.getElementById("gameUI").style.display = "block";
+
+      // ゲーム開始・中断の監視
+      db.ref(`rooms/${roomCode}/started`).on("value", snapshot => {
+        const started = snapshot.val();
+        if (started) {
+          showGameScreen();
+        } else {
+          showWaitingScreen();
+        }
       });
     }
 
-    db.ref(`rooms/${roomCode}/players`).on("value", snapshot => {
-      const list = document.getElementById("playerList");
-      list.innerHTML = "";
-      const players = snapshot.val();
-      for (let name in players) {
-        const li = document.createElement("li");
-        li.textContent = name;
-        list.appendChild(li);
-      }
-    });
+    function showGameScreen() {
+      document.getElementById("waitingScreen").style.display = "none";
+      document.getElementById("gameScreen").style.display = "block";
 
-    function shuffle(array) {
-      for (let i = array.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1));
-        [array[i], array[j]] = [array[j], array[i]];
-      }
-      return array;
+      db.ref(`rooms/${roomCode}/players/${myPlayerId}/number`).once("value", snap => {
+        document.getElementById("yourNumber").innerText = snap.val();
+      });
+    }
+
+    function showWaitingScreen() {
+      document.getElementById("waitingScreen").style.display = "block";
+      document.getElementById("gameScreen").style.display = "none";
+    }
+
+    function submitHint() {
+      const hint = document.getElementById("hintInput").value;
+      db.ref(`rooms/${roomCode}/players/${myPlayerId}/hint`).set(hint);
+      alert("ヒントを送信しました！");
     }
   </script>
 </body>
