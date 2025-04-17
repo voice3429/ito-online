@@ -1,27 +1,18 @@
+
+=== room.html ===
 <!DOCTYPE html>
 <html>
 <head>
-  <meta charset="UTF-8">
+  <meta charset="UTF-8" />
   <title>ito - 部屋</title>
   <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
 </head>
 <body>
-  <h1>ito - 部屋画面</h1>
+  <h1>ito オンライン - 部屋</h1>
   <div id="roomInfo"></div>
-  <div id="playerList"></div>
-
-  <div id="hostControls" style="display:none;">
-    <input type="text" id="themeInput" placeholder="テーマを入力" />
-    <button onclick="startGame()">ゲームスタート</button>
-    <button onclick="stopGame()">ゲーム中断</button>
-  </div>
-
-  <div id="playerControls" style="display:none;">
-    <h2 id="yourNumber"></h2>
-    <input type="text" id="hintInput" placeholder="ヒントを入力" />
-    <button onclick="submitHint()">ヒント送信</button>
-  </div>
+  <div id="players"></div>
+  <div id="game"></div>
 
   <script>
     const firebaseConfig = {
@@ -36,91 +27,70 @@
     firebase.initializeApp(firebaseConfig);
     const db = firebase.database();
 
-    const params = new URLSearchParams(location.search);
-    const roomId = params.get('room');
-    let playerName = localStorage.getItem('playerName');
+    const urlParams = new URLSearchParams(window.location.search);
+    const roomId = urlParams.get('room');
 
-    if (!playerName) {
-      playerName = prompt("あなたの名前を入力してください");
-      localStorage.setItem('playerName', playerName);
+    let playerName = localStorage.getItem('playerName') || prompt("名前を入力してください");
+    if (!playerName) playerName = "ゲスト" + Math.floor(Math.random() * 1000);
+    localStorage.setItem('playerName', playerName);
+
+    const isHost = localStorage.getItem('isHost') === 'true';
+
+    db.ref(`rooms/${roomId}/players/${playerName}`).set({
+      hint: "",
+      number: null
+    });
+
+    db.ref(`rooms/${roomId}/players`).on('value', (snapshot) => {
+      const playersData = snapshot.val();
+      const playersDiv = document.getElementById('players');
+      playersDiv.innerHTML = '<h3>参加者一覧</h3>';
+      for (let name in playersData) {
+        playersDiv.innerHTML += `<div>${name}</div>`;
+      }
+    });
+
+    if (isHost) {
+      const gameDiv = document.getElementById('game');
+      gameDiv.innerHTML = `
+        <input type="text" id="themeInput" placeholder="テーマを入力">
+        <button onclick="startGame()">ゲームスタート</button>
+        <button onclick="cancelGame()">ゲーム中断</button>
+      `;
     }
-
-    const roomRef = db.ref("rooms/" + roomId);
-
-    roomRef.once('value').then(snapshot => {
-      const roomData = snapshot.val();
-      document.getElementById("roomInfo").innerText = `部屋コード: ${roomId}`;
-
-      if (!roomData.players || !roomData.players[playerName]) {
-        roomRef.child("players").child(playerName).set({
-          hint: "",
-          number: null
-        });
-      }
-
-      // 自分が部屋主かどうか判定
-      if (playerName === roomData.host) {
-        document.getElementById("hostControls").style.display = "block";
-      } else {
-        document.getElementById("playerControls").style.display = "block";
-      }
-    });
-
-    roomRef.child("players").on('value', snapshot => {
-      const players = snapshot.val();
-      let list = "<h2>参加者</h2><ul>";
-      for (const name in players) {
-        list += `<li>${name}</li>`;
-      }
-      list += "</ul>";
-      document.getElementById("playerList").innerHTML = list;
-    });
 
     function startGame() {
-      const theme = document.getElementById("themeInput").value;
+      const theme = document.getElementById('themeInput').value;
       if (!theme) {
-        alert("テーマを入力してください！");
+        alert('テーマを入力してください');
         return;
       }
-      roomRef.update({
-        status: "playing",
-        theme: theme
-      });
 
-      roomRef.child("players").once('value').then(snapshot => {
-        const players = Object.keys(snapshot.val());
-        const numbers = shuffle([...Array(players.length)].map((_, i) => i + 1));
-        players.forEach((name, idx) => {
-          roomRef.child("players").child(name).update({
-            number: numbers[idx]
-          });
-        });
+      db.ref(`rooms/${roomId}/theme`).set(theme);
+
+      db.ref(`rooms/${roomId}/players`).once('value', (snapshot) => {
+        const players = snapshot.val();
+        const numbers = shuffle(Array.from({length: Object.keys(players).length}, (_, i) => i + 1));
+        let updates = {};
+        let i = 0;
+        for (let name in players) {
+          updates[name + '/number'] = numbers[i];
+          i++;
+        }
+        db.ref(`rooms/${roomId}/players`).update(updates);
+        db.ref(`rooms/${roomId}/status`).set('playing');
       });
     }
 
-    function stopGame() {
-      roomRef.update({
-        status: "waiting",
-        theme: ""
-      });
-      roomRef.child("players").once('value').then(snapshot => {
-        const updates = {};
-        snapshot.forEach(child => {
-          updates[child.key + "/number"] = null;
-          updates[child.key + "/hint"] = "";
-        });
-        roomRef.child("players").update(updates);
-      });
-    }
-
-    function submitHint() {
-      const hint = document.getElementById("hintInput").value;
-      if (!hint) {
-        alert("ヒントを入力してください！");
-        return;
-      }
-      roomRef.child("players").child(playerName).update({
-        hint: hint
+    function cancelGame() {
+      db.ref(`rooms/${roomId}/status`).set('waiting');
+      db.ref(`rooms/${roomId}/players`).once('value', (snapshot) => {
+        const players = snapshot.val();
+        let updates = {};
+        for (let name in players) {
+          updates[name + '/number'] = null;
+        }
+        db.ref(`rooms/${roomId}/players`).update(updates);
       });
     }
 
@@ -131,6 +101,21 @@
       }
       return array;
     }
+
+    db.ref(`rooms/${roomId}/status`).on('value', (snapshot) => {
+      const status = snapshot.val();
+      const gameDiv = document.getElementById('game');
+      if (status === 'playing') {
+        db.ref(`rooms/${roomId}/players/${playerName}/number`).once('value', (snap) => {
+          const number = snap.val();
+          gameDiv.innerHTML = `<h3>あなたの数字：${number}</h3><input type='text' placeholder='ヒントを入力'>`;
+        });
+      } else {
+        if (!isHost) {
+          gameDiv.innerHTML = '<h3>待機中...</h3>';
+        }
+      }
+    });
   </script>
 </body>
 </html>

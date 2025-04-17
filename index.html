@@ -24,7 +24,7 @@
     const db = firebase.database();
 
     function createRoom() {
-      const roomId = Math.random().toString(36).substring(2, 8); // 6文字のID生成
+      const roomId = Math.random().toString(36).substring(2, 8);
       const hostName = prompt("あなたの名前を入力してください");
       if (!hostName) return;
 
@@ -38,6 +38,9 @@
           }
         }
       });
+
+      localStorage.setItem('playerName', hostName);
+      localStorage.setItem('isHost', 'true');
 
       window.location.href = `room.html?room=${roomId}`;
     }
