@@ -29,26 +29,27 @@
     const roomId = urlParams.get('room');
     let playerName = urlParams.get('name');
 
+    const roomRef = db.ref(`rooms/${roomId}`);
+
     if (!playerName) {
       playerName = prompt("あなたの名前を入力してください");
       if (!playerName) {
         alert("名前が必要です");
         window.location.href = "/";
+      } else {
+        db.ref(`rooms/${roomId}/players/${playerName}`).set({
+          hint: "",
+          number: null,
+          ready: false
+        });
       }
-      db.ref(`rooms/${roomId}/players/${playerName}`).set({
-        hint: "",
-        number: null,
-        ready: false
-      });
     }
-
-    const roomRef = db.ref(`rooms/${roomId}`);
 
     roomRef.on("value", snapshot => {
       const roomData = snapshot.val();
       if (!roomData) return;
 
-      document.getElementById("room-info").innerText = `部屋ID: ${roomId}`;
+      document.getElementById("room-info").innerHTML = `部屋ID: ${roomId}<br>テーマ: ${roomData.theme || "未設定"}`;
 
       const isHost = (playerName === roomData.host);
       const controls = document.getElementById("controls");
@@ -61,19 +62,22 @@
             <button onclick="startGame()">ゲーム開始</button>
           `;
         } else {
-          controls.innerText = "部屋主がゲームを開始するのを待っています...";
+          controls.innerText = "部屋主がゲーム開始を待っています...";
         }
       } else if (roomData.status === "playing") {
-        if (roomData.players[playerName].number !== null) {
-          controls.innerHTML = `あなたの数字: ${roomData.players[playerName].number}<br>
-          <input type="text" id="hint" placeholder="ヒントを入力">
-          <button onclick="submitHint()">ヒント提出</button>`;
+        const myData = roomData.players[playerName];
+        if (myData.number !== null) {
+          controls.innerHTML = `
+            あなたの数字: ${myData.number}<br>
+            <input type="text" id="hint" placeholder="ヒントを入力">
+            <button onclick="submitHint()">ヒント提出</button>
+          `;
         }
         if (isHost) {
           controls.innerHTML += `<br><button onclick="cancelGame()">ゲーム中断</button>`;
         }
       } else if (roomData.status === "revealing") {
-        let hints = "ヒント一覧:<br>";
+        let hints = "<h3>ヒント一覧</h3>";
         for (const [name, player] of Object.entries(roomData.players)) {
           hints += `${name}: ${player.hint}<br>`;
         }
@@ -82,12 +86,11 @@
     });
 
     function startGame() {
-      const theme = document.getElementById("theme").value;
+      const theme = document.getElementById("theme").value.trim();
       if (!theme) {
-        alert("テーマを入力してください");
+        alert("テーマを入力してください！");
         return;
       }
-
       const numbers = shuffle([...Array(100).keys()].map(x => x + 1));
       roomRef.once("value").then(snapshot => {
         const players = snapshot.val().players;
@@ -95,6 +98,8 @@
         let i = 0;
         for (const name in players) {
           updates[`players/${name}/number`] = numbers[i++];
+          updates[`players/${name}/hint`] = "";
+          updates[`players/${name}/ready`] = false;
         }
         updates['status'] = "playing";
         updates['theme'] = theme;
@@ -103,9 +108,9 @@
     }
 
     function submitHint() {
-      const hint = document.getElementById("hint").value;
+      const hint = document.getElementById("hint").value.trim();
       if (!hint) {
-        alert("ヒントを入力してください");
+        alert("ヒントを入力してください！");
         return;
       }
       db.ref(`rooms/${roomId}/players/${playerName}`).update({
@@ -117,20 +122,24 @@
         const players = snapshot.val().players;
         const allReady = Object.values(players).every(p => p.hint);
         if (allReady && playerName === snapshot.val().host) {
-          roomRef.update({status: "revealing"});
+          roomRef.update({ status: "revealing" });
         }
       });
     }
 
     function cancelGame() {
-      roomRef.update({status: "waiting"});
-      for (const name in roomRef.players) {
-        roomRef.child(`players/${name}`).update({
-          number: null,
-          hint: "",
-          ready: false
-        });
-      }
+      roomRef.once("value").then(snapshot => {
+        const players = snapshot.val().players;
+        let updates = {};
+        for (const name in players) {
+          updates[`players/${name}/number`] = null;
+          updates[`players/${name}/hint`] = "";
+          updates[`players/${name}/ready`] = false;
+        }
+        updates['status'] = "waiting";
+        updates['theme'] = "";
+        roomRef.update(updates);
+      });
     }
 
     function shuffle(array) {

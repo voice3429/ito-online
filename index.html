@@ -24,9 +24,10 @@
     const db = firebase.database();
 
     function createRoom() {
-      const roomId = Math.random().toString(36).substring(2, 8);
       const hostName = prompt("あなたの名前を入力してください");
       if (!hostName) return;
+
+      const roomId = Math.random().toString(36).substring(2, 8);
 
       db.ref("rooms/" + roomId).set({
         host: hostName,
