@@ -1,18 +1,30 @@
 <!DOCTYPE html>
-<html>
+<html lang="ja">
 <head>
-  <meta charset="UTF-8" />
-  <title>ito - 部屋に参加</title>
+  <meta charset="UTF-8">
+  <title>ito - 部屋</title>
   <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
 </head>
 <body>
-  <h1>ito オンライン - 部屋に参加</h1>
-  <label for="roomId">部屋コード:</label>
-  <input type="text" id="roomId" />
-  <button onclick="joinRoom()">部屋に参加</button>
+  <h1>ito ゲーム - 部屋</h1>
+
+  <!-- 部屋の情報表示 -->
+  <div id="room-info">
+    <p>部屋コード: <span id="room-id"></span></p>
+    <p>テーマ: <span id="theme">未設定</span></p>
+    <button id="start-game-button" style="display: none;">ゲーム開始</button>
+  </div>
+
+  <!-- 参加者リスト -->
+  <h2>参加者:</h2>
+  <ul id="player-list"></ul>
+
+  <!-- 部屋主の操作 -->
+  <button onclick="setTheme()">テーマを設定</button>
 
   <script>
+    // Firebaseの設定
     const firebaseConfig = {
       apiKey: "AIzaSyBtoNLxqw_TnTSxdNG7gtb308S0jr5pzpE",
       authDomain: "ito-online-4348a.firebaseapp.com",
@@ -25,25 +37,63 @@
     firebase.initializeApp(firebaseConfig);
     const db = firebase.database();
 
-    function joinRoom() {
-      const roomId = document.getElementById("roomId").value;
-      const playerName = prompt("あなたの名前を入力してください");
+    const roomId = new URLSearchParams(window.location.search).get("room");
+    const hostName = new URLSearchParams(window.location.search).get("name");
 
-      if (!playerName) return;
-
-      // 部屋に参加
-      db.ref("rooms/" + roomId + "/players/" + playerName).set({
-        hint: "",
-        number: null,
-        ready: false
-      }).then(() => {
-        console.log(`${playerName} が部屋に参加しました！`);
-        window.location.href = `room.html?room=${roomId}&name=${encodeURIComponent(playerName)}`;
-      }).catch(error => {
-        console.error("参加エラー:", error);
-        alert("部屋への参加に失敗しました！コンソールを確認してください");
-      });
+    if (!roomId || !hostName) {
+      alert("部屋コードまたは名前が正しくありません。");
+      window.location.href = "index.html";
     }
+
+    const roomRef = db.ref("rooms/" + roomId);
+
+    // 部屋の情報をリアルタイムで監視
+    roomRef.on("value", snapshot => {
+      const roomData = snapshot.val();
+      if (!roomData) {
+        alert("部屋が存在しません。");
+        window.location.href = "index.html";
+      }
+
+      // 部屋情報を表示
+      document.getElementById("room-id").textContent = roomId;
+      document.getElementById("theme").textContent = roomData.theme || "未設定";
+
+      // 参加者リストを更新
+      const playerListElement = document.getElementById("player-list");
+      playerListElement.innerHTML = "";
+      for (const playerName in roomData.players) {
+        const li = document.createElement("li");
+        li.textContent = playerName;
+        playerListElement.appendChild(li);
+      }
+
+      // ゲーム開始ボタンの表示
+      if (roomData.host === hostName && roomData.status === "waiting") {
+        document.getElementById("start-game-button").style.display = "block";
+      } else {
+        document.getElementById("start-game-button").style.display = "none";
+      }
+
+      // 部屋の状態が "started" の場合、参加者画面に戻す
+      if (roomData.status === "started") {
+        alert("ゲームが開始されました。");
+        window.location.href = "index.html";  // ゲーム開始後、参加者を部屋コード入力画面に戻す
+      }
+    });
+
+    // 部屋主がテーマを設定する
+    function setTheme() {
+      const theme = prompt("テーマを入力してください");
+      if (theme) {
+        roomRef.update({ theme: theme });
+      }
+    }
+
+    // ゲームを開始
+    document.getElementById("start-game-button").addEventListener("click", () => {
+      roomRef.update({ status: "started" });
+    });
   </script>
 </body>
 </html>
