@@ -37,22 +37,24 @@
     firebase.initializeApp(firebaseConfig);
     const db = firebase.database();
 
+    // URLから部屋IDと自分の名前を取得
     const roomId = new URLSearchParams(window.location.search).get("room");
-    const hostName = new URLSearchParams(window.location.search).get("name");
+    const myName = new URLSearchParams(window.location.search).get("name");
 
-    if (!roomId || !hostName) {
+    if (!roomId || !myName) {
       alert("部屋コードまたは名前が正しくありません。");
       window.location.href = "index.html";
     }
 
     const roomRef = db.ref("rooms/" + roomId);
 
-    // 部屋の情報をリアルタイムで監視
+    // 部屋の情報をリアルタイム監視
     roomRef.on("value", snapshot => {
       const roomData = snapshot.val();
       if (!roomData) {
         alert("部屋が存在しません。");
         window.location.href = "index.html";
+        return;
       }
 
       // 部屋情報を表示
@@ -68,17 +70,16 @@
         playerListElement.appendChild(li);
       }
 
-      // ゲーム開始ボタンの表示
-      if (roomData.host === hostName && roomData.status === "waiting") {
+      // ゲーム開始ボタンを部屋主だけ表示
+      if (roomData.host === myName && roomData.status === "waiting") {
         document.getElementById("start-game-button").style.display = "block";
       } else {
         document.getElementById("start-game-button").style.display = "none";
       }
 
-      // 部屋の状態が "started" の場合、参加者画面に戻す
+      // 部屋の状態が "started" ならプレイ画面に移動
       if (roomData.status === "started") {
-        alert("ゲームが開始されました。");
-        window.location.href = "index.html";  // ゲーム開始後、参加者を部屋コード入力画面に戻す
+        window.location.href = `play.html?room=${roomId}&name=${myName}`;
       }
     });
 
@@ -90,7 +91,7 @@
       }
     }
 
-    // ゲームを開始
+    // ゲーム開始
     document.getElementById("start-game-button").addEventListener("click", () => {
       roomRef.update({ status: "started" });
     });

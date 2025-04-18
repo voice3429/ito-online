@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <title>ito ゲーム - プレイ</title>
+  <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
+</head>
+<body>
+  <h1>ito ゲーム - プレイ</h1>
+
+  <!-- ゲーム中断ボタン（ホストのみ表示） -->
+  <button id="end-game-button" style="display: none;">ゲーム中断</button>
+
+  <h2>ゲーム進行中...</h2>
+
+  <script>
+    // Firebaseの設定
+    const firebaseConfig = {
+      apiKey: "AIzaSyBtoNLxqw_TnTSxdNG7gtb308S0jr5pzpE",
+      authDomain: "ito-online-4348a.firebaseapp.com",
+      databaseURL: "https://ito-online-4348a-default-rtdb.asia-southeast1.firebasedatabase.app",
+      projectId: "ito-online-4348a",
+      storageBucket: "ito-online-4348a.appspot.com",
+      messagingSenderId: "840014772869",
+      appId: "1:840014772869:web:8230edfc917d7a393a47ec"
+    };
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.database();
+
+    const roomId = new URLSearchParams(window.location.search).get("room");
+    const hostName = new URLSearchParams(window.location.search).get("name");
+
+    if (!roomId || !hostName) {
+      alert("部屋コードまたは名前が正しくありません。");
+      window.location.href = "index.html";
+    }
+
+    const roomRef = db.ref("rooms/" + roomId);
+
+    // 部屋の情報をリアルタイムで監視
+    roomRef.on("value", snapshot => {
+      const roomData = snapshot.val();
+      if (!roomData) {
+        alert("部屋が存在しません。");
+        window.location.href = "index.html";
+      }
+
+      // ゲーム進行中かどうか
+      if (roomData.status === "started") {
+        document.getElementById("end-game-button").style.display = "block";
+      }
+
+      // ゲーム中断ボタンをホストのみ表示
+      if (roomData.host === hostName) {
+        document.getElementById("end-game-button").style.display = "block";
+      } else {
+        document.getElementById("end-game-button").style.display = "none";
+      }
+    });
+
+    // ゲーム中断ボタンの処理
+    document.getElementById("end-game-button").addEventListener("click", () => {
+      const confirmEnd = confirm("ゲームを中断しますか？");
+      if (confirmEnd) {
+        roomRef.update({ status: "waiting" });  // 部屋のステータスを「waiting」に戻す
+        alert("ゲームが中断されました。部屋に戻ります。");
+        window.location.href = "room.html?room=" + roomId + "&name=" + encodeURIComponent(hostName);  // 部屋画面に戻る
+      }
+    });
+  </script>
+</body>
+</html>
