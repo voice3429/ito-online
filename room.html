@@ -9,19 +9,28 @@
 <body>
   <h1>ito ゲーム - 部屋</h1>
 
-  <!-- 部屋の情報表示 -->
-  <div id="room-info">
-    <p>部屋コード: <span id="room-id"></span></p>
-    <p>テーマ: <span id="theme">未設定</span></p>
-    <button id="start-game-button" style="display: none;">ゲーム開始</button>
+  <!-- まだ参加していない時 -->
+  <div id="join-form" style="display: none;">
+    <p>部屋コード: <input id="input-room" type="text"></p>
+    <p>名前: <input id="input-name" type="text"></p>
+    <button onclick="joinRoom()">参加する</button>
   </div>
 
-  <!-- 参加者リスト -->
-  <h2>参加者:</h2>
-  <ul id="player-list"></ul>
+  <!-- 参加後、部屋の情報表示 -->
+  <div id="room-info" style="display: none;">
+    <p>部屋コード: <span id="room-id"></span></p>
+    <p>テーマ: <span id="theme">未設定</span></p>
 
-  <!-- 部屋主の操作 -->
-  <button onclick="setTheme()">テーマを設定</button>
+    <div id="host-controls" style="display: none;">
+      <button onclick="setTheme()">テーマを設定</button>
+      <button id="start-game-button">ゲーム開始</button>
+    </div>
+
+    <button id="leave-button" style="margin-top:20px;">退室する</button>
+
+    <h2>参加者:</h2>
+    <ul id="player-list"></ul>
+  </div>
 
   <script>
     // Firebaseの設定
@@ -37,64 +46,87 @@
     firebase.initializeApp(firebaseConfig);
     const db = firebase.database();
 
-    // URLから部屋IDと自分の名前を取得
-    const roomId = new URLSearchParams(window.location.search).get("room");
-    const myName = new URLSearchParams(window.location.search).get("name");
+    const params = new URLSearchParams(window.location.search);
+    const roomId = params.get("room");
+    const myName = params.get("name");
 
     if (!roomId || !myName) {
-      alert("部屋コードまたは名前が正しくありません。");
-      window.location.href = "index.html";
+      document.getElementById("join-form").style.display = "block";
+    } else {
+      document.getElementById("room-info").style.display = "block";
+
+      const roomRef = db.ref("rooms/" + roomId);
+
+      // 自分をプレイヤーとして登録
+      roomRef.child("players").update({ [myName]: true });
+
+      // 部屋の情報をリアルタイムで監視
+      roomRef.on("value", snapshot => {
+        const roomData = snapshot.val();
+        if (!roomData) {
+          alert("部屋が存在しません。");
+          window.location.href = "index.html";
+          return;
+        }
+
+        document.getElementById("room-id").textContent = roomId;
+        document.getElementById("theme").textContent = roomData.theme || "未設定";
+
+        const playerListElement = document.getElementById("player-list");
+        playerListElement.innerHTML = "";
+        for (const playerName in roomData.players) {
+          const li = document.createElement("li");
+          li.textContent = playerName;
+          playerListElement.appendChild(li);
+        }
+
+        // ホストだけテーマ設定ボタンとゲーム開始ボタンを表示
+        if (roomData.host === myName && roomData.status === "waiting") {
+          document.getElementById("host-controls").style.display = "block";
+        } else {
+          document.getElementById("host-controls").style.display = "none";
+        }
+
+        // ゲームが開始されたらplay.htmlへ
+        if (roomData.status === "started") {
+          window.location.href = `play.html?room=${roomId}&name=${encodeURIComponent(myName)}`;
+        }
+      });
+
+      // ゲーム開始ボタン（ホストのみ）
+      document.getElementById("start-game-button").addEventListener("click", () => {
+        roomRef.update({ status: "started" });
+      });
+
+      // テーマ設定（ホストのみ）
+      window.setTheme = function() {
+        const theme = prompt("テーマを入力してください");
+        if (theme) {
+          roomRef.update({ theme: theme });
+        }
+      }
+
+      // 退室ボタン
+      document.getElementById("leave-button").addEventListener("click", () => {
+        if (confirm("本当に退室しますか？")) {
+          roomRef.child("players").child(myName).remove()
+            .then(() => {
+              window.location.href = "index.html"; // 退室したらトップへ戻る
+            });
+        }
+      });
     }
 
-    const roomRef = db.ref("rooms/" + roomId);
-
-    // 部屋の情報をリアルタイム監視
-    roomRef.on("value", snapshot => {
-      const roomData = snapshot.val();
-      if (!roomData) {
-        alert("部屋が存在しません。");
-        window.location.href = "index.html";
-        return;
-      }
-
-      // 部屋情報を表示
-      document.getElementById("room-id").textContent = roomId;
-      document.getElementById("theme").textContent = roomData.theme || "未設定";
-
-      // 参加者リストを更新
-      const playerListElement = document.getElementById("player-list");
-      playerListElement.innerHTML = "";
-      for (const playerName in roomData.players) {
-        const li = document.createElement("li");
-        li.textContent = playerName;
-        playerListElement.appendChild(li);
-      }
-
-      // ゲーム開始ボタンを部屋主だけ表示
-      if (roomData.host === myName && roomData.status === "waiting") {
-        document.getElementById("start-game-button").style.display = "block";
+    // 入力して部屋に参加する関数
+    function joinRoom() {
+      const inputRoom = document.getElementById("input-room").value.trim();
+      const inputName = document.getElementById("input-name").value.trim();
+      if (inputRoom && inputName) {
+        window.location.href = `room.html?room=${encodeURIComponent(inputRoom)}&name=${encodeURIComponent(inputName)}`;
       } else {
-        document.getElementById("start-game-button").style.display = "none";
-      }
-
-      // 部屋の状態が "started" ならプレイ画面に移動
-      if (roomData.status === "started") {
-        window.location.href = `play.html?room=${roomId}&name=${myName}`;
-      }
-    });
-
-    // 部屋主がテーマを設定する
-    function setTheme() {
-      const theme = prompt("テーマを入力してください");
-      if (theme) {
-        roomRef.update({ theme: theme });
+        alert("部屋コードと名前を入力してね！");
       }
     }
-
-    // ゲーム開始
-    document.getElementById("start-game-button").addEventListener("click", () => {
-      roomRef.update({ status: "started" });
-    });
   </script>
 </body>
 </html>
