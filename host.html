@@ -2,34 +2,43 @@
 <html>
 <head>
   <meta charset="UTF-8">
-  <title>itoゲーム - 参加者画面</title>
+  <title>itoゲーム - 部屋主画面</title>
   <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-database-compat.js"></script>
 </head>
 <body>
-  <h1>itoゲーム - 参加者画面</h1>
-  <div id="nameInputScreen">
-    <label>名前を入力: <input type="text" id="nameInput" /></label>
-    <button onclick="enterRoom()">部屋に入る</button>
+  <h1>itoゲーム - 部屋主画面</h1>
+
+  <div>
+    <label>部屋コード: <input type="text" id="roomCodeInput" /></label>
+    <button onclick="createRoom()">部屋を作成</button>
   </div>
 
-  <div id="gameUI" style="display: none;">
+  <div id="hostUI" style="display: none;">
     <p>部屋コード: <span id="roomCodeDisplay"></span></p>
-    <p>あなたの名前: <span id="playerNameDisplay"></span></p>
 
-    <div id="waitingScreen">
-      <p>ゲーム開始を待っています…</p>
+    <div>
+      <label>テーマを入力: <input type="text" id="themeInput" /></label>
+      <button onclick="setTheme()">テーマを設定</button>
     </div>
 
-    <div id="gameScreen" style="display: none;">
-      <p>あなたの数字: <strong id="yourNumber"></strong></p>
-      <label>ヒント: <input type="text" id="hintInput"></label>
-      <button onclick="submitHint()">ヒントを送信</button>
+    <div>
+      <button onclick="startGame()">ゲームを開始する</button>
+    </div>
+
+    <div>
+      <h2>参加者リスト</h2>
+      <ul id="playerList"></ul>
+    </div>
+
+    <div id="themeDisplay" style="display: none;">
+      <h2>設定されたテーマ:</h2>
+      <p id="currentTheme"></p>
     </div>
   </div>
 
   <script>
-     const firebaseConfig = {
+    const firebaseConfig = {
       apiKey: "AIzaSyBtoNLxqw_TnTSxdNG7gtb308S0jr5pzpE",
       authDomain: "ito-online-4348a.firebaseapp.com",
       databaseURL: "https://ito-online-4348a-default-rtdb.asia-southeast1.firebasedatabase.app",
@@ -42,62 +51,52 @@
     firebase.initializeApp(firebaseConfig);
     const db = firebase.database();
 
-    const params = new URLSearchParams(location.search);
-    const roomCode = params.get("room");
-    document.getElementById("roomCodeDisplay").innerText = roomCode;
+    let roomCode = "";
 
-    let playerName = "";
-    let myPlayerId = null;
-
-    function enterRoom() {
-      playerName = document.getElementById("nameInput").value.trim();
-      if (!playerName) {
-        alert("名前を入力してください！");
+    function createRoom() {
+      roomCode = document.getElementById("roomCodeInput").value.trim();
+      if (!roomCode) {
+        alert("部屋コードを入力してください！");
         return;
       }
 
-      // プレイヤー情報をFirebaseに追加
-      const newPlayerRef = db.ref(`rooms/${roomCode}/players`).push();
-      newPlayerRef.set({
-        name: playerName,
-        hint: "",
-        number: null
+      const roomRef = db.ref(`rooms/${roomCode}`);
+      roomRef.set({
+        started: false,
+        theme: "",
+        players: {}
       });
 
-      myPlayerId = newPlayerRef.key;
-      document.getElementById("playerNameDisplay").innerText = playerName;
-      document.getElementById("nameInputScreen").style.display = "none";
-      document.getElementById("gameUI").style.display = "block";
+      document.getElementById("roomCodeDisplay").innerText = roomCode;
+      document.getElementById("hostUI").style.display = "block";
 
-      // ゲーム開始・中断の監視
-      db.ref(`rooms/${roomCode}/started`).on("value", snapshot => {
-        const started = snapshot.val();
-        if (started) {
-          showGameScreen();
-        } else {
-          showWaitingScreen();
+      // プレイヤーリストの監視を開始
+      db.ref(`rooms/${roomCode}/players`).on("value", snapshot => {
+        const players = snapshot.val() || {};
+        const playerList = document.getElementById("playerList");
+        playerList.innerHTML = "";
+        for (const id in players) {
+          const li = document.createElement("li");
+          li.innerText = players[id].name;
+          playerList.appendChild(li);
         }
       });
     }
 
-    function showGameScreen() {
-      document.getElementById("waitingScreen").style.display = "none";
-      document.getElementById("gameScreen").style.display = "block";
-
-      db.ref(`rooms/${roomCode}/players/${myPlayerId}/number`).once("value", snap => {
-        document.getElementById("yourNumber").innerText = snap.val();
-      });
+    function setTheme() {
+      const theme = document.getElementById("themeInput").value.trim();
+      if (!theme) {
+        alert("テーマを入力してください！");
+        return;
+      }
+      db.ref(`rooms/${roomCode}/theme`).set(theme);
+      document.getElementById("currentTheme").innerText = theme;
+      document.getElementById("themeDisplay").style.display = "block";
     }
 
-    function showWaitingScreen() {
-      document.getElementById("waitingScreen").style.display = "block";
-      document.getElementById("gameScreen").style.display = "none";
-    }
-
-    function submitHint() {
-      const hint = document.getElementById("hintInput").value;
-      db.ref(`rooms/${roomCode}/players/${myPlayerId}/hint`).set(hint);
-      alert("ヒントを送信しました！");
+    function startGame() {
+      db.ref(`rooms/${roomCode}/started`).set(true);
+      alert("ゲームを開始しました！");
     }
   </script>
 </body>
