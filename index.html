@@ -40,9 +40,13 @@
           }
         },
         theme: ""
+      }).then(() => {
+        console.log("部屋作成成功！", roomId);
+        window.location.href = `host.html?room=${roomId}&name=${encodeURIComponent(hostName)}`;
+      }).catch((error) => {
+        console.error("部屋作成エラー:", error);
+        alert("部屋作成に失敗しました！コンソールを確認してください");
       });
-
-      window.location.href = `host.html?room=${roomId}&name=${encodeURIComponent(hostName)}`;
     }
   </script>
 </body>
