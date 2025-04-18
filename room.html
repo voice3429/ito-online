@@ -2,12 +2,12 @@
 <html>
 <head>
   <meta charset="UTF-8">
-  <title>itoゲーム - 参加者画面</title>
+  <title>itoゲーム - 参加者</title>
   <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-database-compat.js"></script>
 </head>
 <body>
-  <h1>itoゲーム - 参加者画面</h1>
+  <h1>itoゲーム - 参加者</h1>
 
   <div id="nameInputScreen">
     <label>名前を入力: <input type="text" id="nameInput" /></label>
@@ -23,10 +23,10 @@
     </div>
 
     <div id="gameScreen" style="display: none;">
-      <p>テーマ: <strong id="themeDisplay"></strong></p> <!-- テーマ表示追加！ -->
       <p>あなたの数字: <strong id="yourNumber"></strong></p>
       <label>ヒント: <input type="text" id="hintInput"></label>
       <button onclick="submitHint()">ヒントを送信</button>
+      <div id="hintDisplay"></div>
     </div>
   </div>
 
@@ -58,7 +58,6 @@
         return;
       }
 
-      // プレイヤー情報をFirebaseに追加
       const newPlayerRef = db.ref(`rooms/${roomCode}/players`).push();
       newPlayerRef.set({
         name: playerName,
@@ -71,7 +70,6 @@
       document.getElementById("nameInputScreen").style.display = "none";
       document.getElementById("gameUI").style.display = "block";
 
-      // ゲーム開始・中断の監視
       db.ref(`rooms/${roomCode}/started`).on("value", snapshot => {
         const started = snapshot.val();
         if (started) {
@@ -80,20 +78,21 @@
           showWaitingScreen();
         }
       });
+
+      db.ref(`rooms/${roomCode}/hintsRevealed`).on("value", snapshot => {
+        const hintsRevealed = snapshot.val();
+        if (hintsRevealed) {
+          showHints();
+        }
+      });
     }
 
     function showGameScreen() {
       document.getElementById("waitingScreen").style.display = "none";
       document.getElementById("gameScreen").style.display = "block";
 
-      // 自分の数字を表示
       db.ref(`rooms/${roomCode}/players/${myPlayerId}/number`).once("value", snap => {
         document.getElementById("yourNumber").innerText = snap.val();
-      });
-
-      // テーマも表示
-      db.ref(`rooms/${roomCode}/theme`).once("value", snap => {
-        document.getElementById("themeDisplay").innerText = snap.val();
       });
     }
 
@@ -106,6 +105,25 @@
       const hint = document.getElementById("hintInput").value;
       db.ref(`rooms/${roomCode}/players/${myPlayerId}/hint`).set(hint);
       alert("ヒントを送信しました！");
+    }
+
+    function showHints() {
+      db.ref(`rooms/${roomCode}/players`).once("value", snapshot => {
+        snapshot.forEach(playerSnapshot => {
+          const playerId = playerSnapshot.key;
+          const playerHint = playerSnapshot.val().hint;
+          if (playerHint) {
+            displayHint(playerId, playerHint);
+          }
+        });
+      });
+    }
+
+    function displayHint(playerId, hint) {
+      const hintDisplayArea = document.getElementById("hintDisplay");
+      const hintElement = document.createElement("p");
+      hintElement.innerText = `${playerId}: ${hint}`;
+      hintDisplayArea.appendChild(hintElement);
     }
   </script>
 </body>
