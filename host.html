@@ -2,25 +2,29 @@
 <html>
 <head>
   <meta charset="UTF-8">
-  <title>itoゲーム - 部屋主</title>
+  <title>itoゲーム - 部屋作成</title>
   <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-database-compat.js"></script>
 </head>
 <body>
-  <h1>itoゲーム - 部屋主</h1>
-
-  <div id="roomSetup">
-    <label>部屋コード: <span id="roomCodeDisplay"></span></label>
-    <br>
-    <label>テーマ: <input type="text" id="themeInput" placeholder="テーマを入力" /></label>
-    <br>
-    <button onclick="startGame()">ゲームをスタート</button>
-    <button onclick="revealHints()">ヒントを公開</button>
+  <h1>itoゲーム - 部屋作成</h1>
+  <div id="createRoomUI">
+    <label>名前を入力: <input type="text" id="nameInput" /></label>
+    <label>テーマを入力: <input type="text" id="themeInput" /></label>
+    <button onclick="createRoom()">部屋を作成</button>
   </div>
 
-  <div id="gameUI" style="display: none;">
-    <h2>ゲーム開始！</h2>
-    <p>部屋コード: <span id="roomCodeDisplay2"></span></p>
+  <div id="hostUI" style="display: none;">
+    <p>部屋コード: <span id="roomCodeDisplay"></span></p>
+    <p>テーマ: <span id="themeDisplay"></span></p>
+    <button onclick="startGame()">ゲーム開始</button>
+    <button onclick="endGame()">ゲームを終了</button>
+  </div>
+
+  <div id="playerUI" style="display: none;">
+    <p>部屋コード: <span id="roomCodeDisplayPlayer"></span></p>
+    <p>あなたの名前: <span id="playerNameDisplay"></span></p>
+    <p>ゲーム開始を待っています...</p>
   </div>
 
   <script>
@@ -37,39 +41,114 @@
     firebase.initializeApp(firebaseConfig);
     const db = firebase.database();
 
-    let roomCode = generateRoomCode(); // ランダムな部屋コードを生成
-    let theme = "";
+    let roomCode = "";
+    let myPlayerId = null;
 
-    // 部屋コードを表示
-    document.getElementById("roomCodeDisplay").innerText = roomCode;
-    document.getElementById("roomCodeDisplay2").innerText = roomCode;
+    // 部屋を作成する関数
+    function createRoom() {
+      const playerName = document.getElementById("nameInput").value.trim();
+      const theme = document.getElementById("themeInput").value.trim();
 
-    function generateRoomCode() {
-      return Math.random().toString(36).substring(2, 8).toUpperCase(); // ランダムな6文字
-    }
-
-    function startGame() {
-      theme = document.getElementById("themeInput").value.trim();
-      if (!theme) {
-        alert("テーマを入力してください！");
+      if (!playerName || !theme) {
+        alert("名前とテーマを入力してください！");
         return;
       }
 
-      // Firebaseにテーマと部屋の開始フラグを保存
-      db.ref(`rooms/${roomCode}`).set({
+      // ランダムな部屋コードを生成
+      roomCode = generateRoomCode();
+
+      // 部屋情報をFirebaseに保存
+      const roomRef = db.ref(`rooms/${roomCode}`);
+      roomRef.set({
         theme: theme,
-        started: true,
-        hintsRevealed: false
+        started: false,
+        host: null,  // 部屋主のIDはまだ設定されていない
+        players: {}
       });
 
-      document.getElementById("roomSetup").style.display = "none";
-      document.getElementById("gameUI").style.display = "block";
+      // 部屋作成後、最初に入るユーザーを部屋主として設定
+      const newPlayerRef = roomRef.child("players").push();
+      newPlayerRef.set({
+        name: playerName,
+        hint: "",
+        number: null
+      });
+
+      const hostPlayerId = newPlayerRef.key; // 部屋主のID
+      roomRef.update({ host: hostPlayerId }); // 部屋主を更新
+
+      // 部屋コードとテーマを表示
+      document.getElementById("roomCodeDisplay").innerText = roomCode;
+      document.getElementById("themeDisplay").innerText = theme;
+
+      // 部屋主用のUIを表示
+      document.getElementById("hostUI").style.display = "block";
+      document.getElementById("createRoomUI").style.display = "none";
     }
 
-    function revealHints() {
-      // ヒント公開フラグをFirebaseにセット
-      db.ref(`rooms/${roomCode}/hintsRevealed`).set(true);
-      alert("ヒントが公開されました！");
+    // ランダムな部屋コードを生成する関数
+    function generateRoomCode() {
+      return Math.random().toString(36).substring(2, 8).toUpperCase();
+    }
+
+    // 部屋に参加する関数
+    function joinRoom() {
+      const playerName = document.getElementById("nameInput").value.trim();
+      if (!playerName || !roomCode) {
+        alert("名前と部屋コードを入力してください！");
+        return;
+      }
+
+      // プレイヤー情報を部屋に追加
+      const roomRef = db.ref(`rooms/${roomCode}`);
+      const newPlayerRef = roomRef.child("players").push();
+      newPlayerRef.set({
+        name: playerName,
+        hint: "",
+        number: null
+      });
+
+      myPlayerId = newPlayerRef.key;
+
+      // 部屋コードを表示
+      document.getElementById("roomCodeDisplayPlayer").innerText = roomCode;
+      document.getElementById("playerNameDisplay").innerText = playerName;
+
+      // プレイヤー用UIを表示
+      document.getElementById("playerUI").style.display = "block";
+      document.getElementById("createRoomUI").style.display = "none";
+
+      // 部屋主かどうかを確認
+      checkIfHost();
+    }
+
+    // 部屋主かどうかをチェックする関数
+    function checkIfHost() {
+      const roomRef = db.ref(`rooms/${roomCode}`);
+      roomRef.once('value', snapshot => {
+        const roomData = snapshot.val();
+        const hostId = roomData.host;
+
+        if (hostId === myPlayerId) {
+          document.getElementById("hostUI").style.display = "block"; // 部屋主UIを表示
+        }
+      });
+    }
+
+    // ゲーム開始の関数（部屋主専用）
+    function startGame() {
+      const roomRef = db.ref(`rooms/${roomCode}`);
+      roomRef.update({ started: true });
+
+      alert("ゲームが開始されました！");
+    }
+
+    // ゲーム終了の関数（部屋主専用）
+    function endGame() {
+      const roomRef = db.ref(`rooms/${roomCode}`);
+      roomRef.update({ started: false });
+
+      alert("ゲームが終了しました！");
     }
   </script>
 </body>
