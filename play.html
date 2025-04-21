@@ -2,145 +2,125 @@
 <html lang="ja">
 <head>
   <meta charset="UTF-8">
-  <title>ito - プレイ画面</title>
-  <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
-</head>
-<body>
-  <h1>ito ゲーム - プレイ画面</h1>
-
-  <div id="game-area" style="display:none;">
-    <p>あなたの数字: <span id="my-number"></span></p>
-
-    <h2>ヒントを入力</h2>
-    <input type="text" id="hint-input" placeholder="ヒントを入力">
-    <button id="submit-hint">送信</button>
-
-    <p id="hint-status"></p>
-  </div>
-
-  <div id="host-controls" style="display:none;">
-    <button id="start-game-button">ゲームを開始</button>
-    <button onclick="endGame()">ゲームを中断する</button>
-  </div>
-
-  <div>
-    <button onclick="leaveRoom()">退室する</button>
-  </div>
-
+  <title>プレイ画面</title>
+  <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
   <script>
     // Firebase設定
     const firebaseConfig = {
-      apiKey: "AIzaSyBtoNLxqw_TnTSxdNG7gtb308S0jr5pzpE",
-      authDomain: "ito-online-4348a.firebaseapp.com",
-      databaseURL: "https://ito-online-4348a-default-rtdb.asia-southeast1.firebasedatabase.app",
-      projectId: "ito-online-4348a",
-      storageBucket: "ito-online-4348a.appspot.com",
-      messagingSenderId: "840014772869",
-      appId: "1:840014772869:web:8230edfc917d7a393a47ec"
+      apiKey: "AIzaSyC8P0S_Mjx9l5DrqVmkTeF4ozvmIVr3PjE",
+      authDomain: "ito-online-fcf44.firebaseapp.com",
+      databaseURL: "https://ito-online-fcf44-default-rtdb.firebaseio.com",
+      projectId: "ito-online-fcf44",
+      storageBucket: "ito-online-fcf44.appspot.com",
+      messagingSenderId: "427775685433",
+      appId: "1:427775685433:web:86f6773f46a21810d7e385"
     };
     firebase.initializeApp(firebaseConfig);
+
     const db = firebase.database();
+    const urlParams = new URLSearchParams(window.location.search);
+    const roomId = urlParams.get('roomId');
+    const name = urlParams.get('name');
 
-    const params = new URLSearchParams(window.location.search);
-    const roomId = params.get("room");
-    const playerName = params.get("name");
-
-    if (!roomId || !playerName) {
-      alert("不正なアクセスです。");
-      window.location.href = "index.html";
+    if (!roomId || !name) {
+      window.location.href = 'index.html';
     }
 
-    const roomRef = db.ref("rooms/" + roomId);
-
+    let isHost = false;
     let myNumber = null;
 
-    // 部屋情報を監視
-    roomRef.on("value", snapshot => {
-      const roomData = snapshot.val();
-      if (!roomData) {
-        alert("部屋が存在しません。");
-        window.location.href = "index.html";
-        return;
-      }
+    function sendHint() {
+      const hint = document.getElementById('hintInput').value.trim();
+      if (hint === '') return;
+      db.ref(`rooms/${roomId}/players/${name}`).update({
+        hint: hint
+      }).then(() => {
+        const hintStatus = document.getElementById('hintStatus');
+        hintStatus.textContent = 'ヒントを送信しました';
+        hintStatus.style.color = 'green';
+        document.getElementById('hintInput').disabled = true;
+        document.getElementById('sendHintButton').disabled = true;
+      });
+    }
 
-      // ゲームが始まったら数字を配布
-      if (roomData.players && roomData.players[playerName]) {
-        if (!roomData.players[playerName].number) {
-          const randomNum = Math.floor(Math.random() * 100) + 1;
-          roomRef.child("players").child(playerName).update({ number: randomNum });
+    function revealHints() {
+      db.ref(`rooms/${roomId}`).update({
+        hintsRevealed: true
+      });
+    }
+
+    function loadGame() {
+      db.ref(`rooms/${roomId}`).once('value').then((snapshot) => {
+        const roomData = snapshot.val();
+        if (!roomData) {
+          alert('ルームが存在しません');
+          window.location.href = 'index.html';
+        }
+
+        isHost = (roomData.host === name);
+
+        if (roomData.players && roomData.players[name]) {
+          myNumber = roomData.players[name].number;
+          document.getElementById('myNumber').textContent = `あなたの番号：${myNumber}`;
         } else {
-          myNumber = roomData.players[playerName].number;
-          document.getElementById("my-number").textContent = myNumber;
-          document.getElementById("game-area").style.display = "block";
+          alert('プレイヤーデータが存在しません');
+          window.location.href = 'index.html';
         }
-      }
 
-      // ゲーム開始ボタン
-      if (roomData.host === playerName && roomData.status === "waiting") {
-        document.getElementById("start-game-button").style.display = "block";
-      }
-
-      // ホストなら中断ボタンを表示
-      if (roomData.host === playerName) {
-        document.getElementById("host-controls").style.display = "block";
-      }
-
-      // ゲームが始まったら、部屋主も参加者と同様にゲーム画面に表示する
-      if (roomData.status === "started") {
-        // 部屋主の画面も更新
-        if (roomData.host === playerName) {
-          document.getElementById("game-area").style.display = "block";
+        if (isHost) {
+          document.getElementById('revealHintsButton').style.display = 'inline-block';
         }
-      }
-    });
-
-    // ゲーム開始ボタンを押したとき
-    document.getElementById("start-game-button").addEventListener("click", () => {
-      roomRef.update({ status: "started" });
-
-      // ゲーム開始後に、全員に数字を配布
-      roomRef.child("players").once("value", snapshot => {
-        snapshot.forEach(playerSnapshot => {
-          const playerName = playerSnapshot.key;
-          const randomNum = Math.floor(Math.random() * 100) + 1;
-          roomRef.child("players").child(playerName).update({ number: randomNum });
-        });
       });
 
-      // 部屋の状態をゲーム中に変更
-      roomRef.update({ status: "started" });
-    });
+      db.ref(`rooms/${roomId}/hintsRevealed`).on('value', (snapshot) => {
+        if (snapshot.val()) {
+          const hintsDiv = document.getElementById('hints');
+          hintsDiv.innerHTML = '<h3>みんなのヒント</h3>';
+          db.ref(`rooms/${roomId}/players`).once('value').then((playersSnap) => {
+            playersSnap.forEach((playerSnap) => {
+              const player = playerSnap.val();
+              if (player.hint) {
+                const p = document.createElement('p');
+                p.textContent = `${player.name}：${player.hint}`;
+                hintsDiv.appendChild(p);
+              }
+            });
+          });
+        }
+      });
+    }
 
-    // ヒントを送信
-    document.getElementById("submit-hint").addEventListener("click", () => {
-      const hint = document.getElementById("hint-input").value.trim();
-      if (hint === "") {
-        alert("ヒントを入力してください。");
-        return;
-      }
-
-      roomRef.child("players").child(playerName).update({ hint: hint });
-      document.getElementById("hint-status").textContent = "ヒントを送信しました！";
-      document.getElementById("hint-input").disabled = true;
-      document.getElementById("submit-hint").disabled = true;
-    });
-
-    // 退室処理
-    function leaveRoom() {
-      if (confirm("本当に退室しますか？")) {
-        roomRef.child("players").child(playerName).remove();
-        window.location.href = "index.html";
+    function leaveGame() {
+      if (confirm('本当に退室しますか？')) {
+        db.ref(`rooms/${roomId}/players/${name}`).remove().then(() => {
+          window.location.href = 'index.html';
+        });
       }
     }
 
-    // ホスト用：ゲーム中断
-    function endGame() {
-      if (confirm("ゲームを中断しますか？")) {
-        roomRef.remove();
-        window.location.href = "index.html";
-      }
-    }
+    window.onload = loadGame;
   </script>
+</head>
+<body style="text-align: left; padding: 20px;">
+  <h2>プレイ画面</h2>
+
+  <div id="myNumber" style="margin-bottom: 20px;"></div>
+
+  <div>
+    <input type="text" id="hintInput" placeholder="ヒントを入力" style="width: 200px;" />
+    <button id="sendHintButton" onclick="sendHint()">ヒント送信</button>
+    <div id="hintStatus" style="margin-top: 10px; font-size: 14px;"></div>
+  </div>
+
+  <div style="margin-top: 20px;">
+    <button id="revealHintsButton" onclick="revealHints()" style="display: none;">ヒントを一斉公開</button>
+  </div>
+
+  <div id="hints" style="margin-top: 30px;"></div>
+
+  <div style="margin-top: 30px;">
+    <button onclick="leaveGame()">ゲームを中断して退室</button>
+  </div>
 </body>
 </html>

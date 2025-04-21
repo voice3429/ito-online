@@ -1,87 +1,106 @@
 <!DOCTYPE html>
-<html>
+<html lang="ja">
 <head>
-  <meta charset="UTF-8" />
-  <title>ito - 部屋主</title>
-  <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
-</head>
-<body>
-  <h1>ito オンライン - 部屋主</h1>
-  <h2>部屋コード: <span id="roomCode"></span></h2>
-  <h3>テーマ: <span id="theme"></span></h3>
-  <input type="text" id="newTheme" placeholder="新しいテーマを入力" />
-  <button onclick="updateTheme()">テーマを更新</button>
-  <br><br>
-  <button onclick="startGame()">ゲーム開始</button>
-  
-  <h3>参加者</h3>
-  <ul id="participants">
-    <!-- 参加者の名前がここに追加されます -->
-  </ul>
-
+  <meta charset="UTF-8">
+  <title>ホスト画面</title>
+  <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
   <script>
+    // Firebase設定（君が前に教えてくれたやつ）
     const firebaseConfig = {
-      apiKey: "AIzaSyBtoNLxqw_TnTSxdNG7gtb308S0jr5pzpE",
-      authDomain: "ito-online-4348a.firebaseapp.com",
-      databaseURL: "https://ito-online-4348a-default-rtdb.asia-southeast1.firebasedatabase.app",
-      projectId: "ito-online-4348a",
-      storageBucket: "ito-online-4348a.appspot.com",
-      messagingSenderId: "840014772869",
-      appId: "1:840014772869:web:8230edfc917d7a393a47ec"
+      apiKey: "AIzaSyC8P0S_Mjx9l5DrqVmkTeF4ozvmIVr3PjE",
+      authDomain: "ito-online-fcf44.firebaseapp.com",
+      databaseURL: "https://ito-online-fcf44-default-rtdb.firebaseio.com",
+      projectId: "ito-online-fcf44",
+      storageBucket: "ito-online-fcf44.appspot.com",
+      messagingSenderId: "427775685433",
+      appId: "1:427775685433:web:86f6773f46a21810d7e385"
     };
     firebase.initializeApp(firebaseConfig);
+
     const db = firebase.database();
-
     const urlParams = new URLSearchParams(window.location.search);
-    const roomId = urlParams.get('room');
-    const hostName = decodeURIComponent(urlParams.get('name'));
+    const roomId = urlParams.get('roomId');
+    const name = urlParams.get('name');
 
-    document.getElementById("roomCode").textContent = roomId;
+    if (!roomId || !name) {
+      window.location.href = 'index.html';
+    }
 
-    // 部屋情報を取得
-    db.ref("rooms/" + roomId).on("value", snapshot => {
-      const roomData = snapshot.val();
-      if (roomData) {
-        document.getElementById("theme").textContent = roomData.theme || "まだテーマが設定されていません";
-
-        // 参加者リストを更新
-        const playerList = document.getElementById('participants');
-        playerList.innerHTML = ''; // 既存のリストをクリア
-        Object.keys(roomData.players).forEach(playerName => {
-          const listItem = document.createElement('li');
-          listItem.textContent = playerName;
-          playerList.appendChild(listItem);
+    function startGame() {
+      const playersRef = db.ref('rooms/' + roomId + '/players');
+      playersRef.once('value', (snapshot) => {
+        const updates = {};
+        snapshot.forEach((child) => {
+          const playerId = child.key;
+          const randomNum = Math.floor(Math.random() * 100) + 1;
+          updates[playerId + '/number'] = randomNum;
         });
-      } else {
-        console.error("部屋が見つかりません！");
-      }
-    });
+        // ★ホスト自身にもnumberを振る（ここが超大事！！！）
+        const hostRandomNum = Math.floor(Math.random() * 100) + 1;
+        updates[name + '/number'] = hostRandomNum;
 
-    // テーマ更新
-    function updateTheme() {
-      const newTheme = document.getElementById("newTheme").value;
-      if (!newTheme) return;
-
-      db.ref("rooms/" + roomId).update({
-        theme: newTheme
-      }).then(() => {
-        alert("テーマが更新されました！");
-      }).catch(error => {
-        console.error("テーマ更新エラー:", error);
+        playersRef.update(updates).then(() => {
+          db.ref('rooms/' + roomId).update({
+            status: 'started'
+          }).then(() => {
+            window.location.href = `play.html?roomId=${roomId}&name=${encodeURIComponent(name)}`;
+          });
+        });
       });
     }
 
-    // ゲーム開始
-    function startGame() {
-      db.ref("rooms/" + roomId).update({
-        status: "started"
-      }).then(() => {
-        alert("ゲームが開始されました！");
-      }).catch(error => {
-        console.error("ゲーム開始エラー:", error);
+    function updateTheme() {
+      const newTheme = document.getElementById('themeInput').value;
+      if (newTheme.trim() !== '') {
+        db.ref('rooms/' + roomId).update({
+          theme: newTheme
+        });
+      }
+    }
+
+    function loadPlayers() {
+      const playersRef = db.ref('rooms/' + roomId + '/players');
+      playersRef.on('value', (snapshot) => {
+        const playerList = document.getElementById('playerList');
+        playerList.innerHTML = '';
+        snapshot.forEach((child) => {
+          const playerData = child.val();
+          const li = document.createElement('li');
+          li.textContent = playerData.name;
+          playerList.appendChild(li);
+        });
       });
+    }
+
+    window.onload = function() {
+      db.ref('rooms/' + roomId).once('value').then((snapshot) => {
+        const roomData = snapshot.val();
+        if (!roomData || roomData.host !== name) {
+          alert('不正なアクセスです');
+          window.location.href = 'index.html';
+        }
+      });
+      loadPlayers();
     }
   </script>
+</head>
+<body style="text-align: left; padding: 20px;">
+  <h2>ホスト画面</h2>
+  
+  <div>
+    <label>テーマ変更：</label>
+    <input type="text" id="themeInput" placeholder="テーマを入力" style="width: 200px;">
+    <button onclick="updateTheme()">変更</button>
+  </div>
+
+  <div style="margin-top: 20px;">
+    <h3>参加者一覧</h3>
+    <ul id="playerList"></ul>
+  </div>
+
+  <div style="margin-top: 20px;">
+    <button onclick="startGame()">ゲームを開始</button>
+  </div>
 </body>
 </html>
